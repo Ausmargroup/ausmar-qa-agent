@@ -170,6 +170,75 @@ def extract_spreadsheet_info(file_path: str) -> dict:
         return {"type": "spreadsheet", "sheets": [], "headers": [], "sample_text": ""}
 
 
+def extract_pse_excel_totals(file_path: str) -> dict:
+    """Extract TOTAL DEBITS, TOTAL CREDITS, and PROPOSED NEW HOME PRICE from PSE Excel.
+    Also extracts the pricing period from the filename or sheet data.
+    Returns dict with keys: total_debits, total_credits, proposed_price, pricing_period."""
+    result = {"total_debits": None, "total_credits": None, "proposed_price": None, "pricing_period": None}
+    if not _OPENPYXL_AVAILABLE:
+        return result
+    try:
+        wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
+        # Search the PSE-NHP sheet (main pricing sheet) or GLD PSE
+        target_sheets = [s for s in wb.sheetnames if s.lower() in ["pse-nhp", "gld pse", "pse"]]
+        if not target_sheets:
+            # Fall back to any sheet with "pse" in the name
+            target_sheets = [s for s in wb.sheetnames if "pse" in s.lower()]
+        if not target_sheets:
+            target_sheets = wb.sheetnames[:1]  # Last resort: first sheet
+
+        for sheet_name in target_sheets:
+            ws = wb[sheet_name]
+            for row in ws.iter_rows(values_only=True):
+                if row is None:
+                    continue
+                # Look for label in column index 1 (second column)
+                row_vals = list(row)
+                label = None
+                for i, cell in enumerate(row_vals):
+                    if isinstance(cell, str):
+                        label_lower = cell.strip().lower()
+                        if "total debits" in label_lower:
+                            # Value is typically in column index 8 or the next numeric column
+                            for v in row_vals[i+1:]:
+                                if isinstance(v, (int, float)) and v > 0:
+                                    result["total_debits"] = round(v, 2)
+                                    break
+                        elif "total credits" in label_lower:
+                            for v in row_vals[i+1:]:
+                                if isinstance(v, (int, float)) and v > 0:
+                                    result["total_credits"] = round(v, 2)
+                                    break
+                        elif "proposed new home price" in label_lower:
+                            for v in row_vals[i+1:]:
+                                if isinstance(v, (int, float)) and v > 0:
+                                    result["proposed_price"] = round(v, 2)
+                                    break
+            # If we found the proposed price, stop searching other sheets
+            if result["proposed_price"] is not None:
+                break
+
+        wb.close()
+    except Exception as e:
+        print(f"[WARN] extract_pse_excel_totals failed: {e}")
+
+    # Try to extract pricing period from filename
+    fname = os.path.basename(file_path).lower()
+    # Common patterns: "PSE Dec-Jan.xlsm", "PSE Feb-Mar 2026.xlsx"
+    month_names = ["jan", "feb", "mar", "apr", "may", "jun",
+                   "jul", "aug", "sep", "oct", "nov", "dec"]
+    found_months = []
+    for m in month_names:
+        if m in fname:
+            found_months.append(m)
+    if len(found_months) >= 2:
+        result["pricing_period"] = f"{found_months[0].title()}-{found_months[1].title()}"
+    elif len(found_months) == 1:
+        result["pricing_period"] = found_months[0].title()
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Image/PDF conversion utilities (for vision analysis)
 # ---------------------------------------------------------------------------
@@ -746,11 +815,12 @@ def check_file_structure(extract_dir: str, zip_name: str) -> dict:
                 except Exception:
                     pass
 
-    # Check zip name format
+    # Extract deal code from zip name (no warning — consultants name zips inconsistently)
     zip_stem = Path(zip_name).stem
-    deal_code_pattern = re.compile(r"^[A-Za-z]\d{2}[A-Za-z]{2,6}$")
-    if not deal_code_pattern.match(zip_stem):
-        warnings.append(f"Zip name '{zip_name}' may not be a valid deal code (expected format like S26TLS)")
+    # Try to extract deal code pattern from the zip name even if it has extra words
+    deal_code_match = re.search(r'[A-Za-z]\d{2}[A-Za-z]{2,6}', zip_stem)
+    if deal_code_match:
+        zip_stem = deal_code_match.group(0)
 
     # Remove junk files
     cleaned_files = []
@@ -1347,7 +1417,8 @@ IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems
 # ---------------------------------------------------------------------------
 # Check 6: PSE Excel Analysis — uses file_map
 # ---------------------------------------------------------------------------
-def check_pse_excel(file_map: dict, geosite_analysis: dict) -> dict:
+def check_pse_excel(file_map: dict, geosite_analysis: dict, results: dict = None) -> dict:
+    """Check PSE Excel: extract totals, compare with signed PDF, check pricing period."""
     if "pse_excel" not in file_map:
         return {
             "issues": ["Missing: PSE Excel — required per 1.0 PSE Document Naming"],
@@ -1363,6 +1434,99 @@ def check_pse_excel(file_map: dict, geosite_analysis: dict) -> dict:
         analysis["geosite_facade"] = facade_name
 
     # Gas cooktops: NOT flagged. Stockland ruling overrides covenant restrictions.
+
+    # === Extract totals from PSE Excel ===
+    excel_path = file_map["pse_excel"]["full_path"]
+    excel_totals = extract_pse_excel_totals(excel_path)
+    analysis["excel_totals"] = excel_totals
+
+    if excel_totals.get("proposed_price"):
+        analysis["excel_proposed_price"] = excel_totals["proposed_price"]
+
+    # === CRITICAL CHECK: Compare PSE Excel total vs PSE Signed PDF total ===
+    if excel_totals.get("proposed_price") and "pse_doc" in file_map:
+        try:
+            pse_path = file_map["pse_doc"]["full_path"]
+            # Use vision to extract the total from the last few pages of the signed PSE
+            pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=15)
+            if pse_pages:
+                # We want the last pages where the totals are
+                # Use the last 2 pages (totals are typically on the second-to-last page)
+                pages_to_check = pse_pages[-3:] if len(pse_pages) >= 3 else pse_pages
+                raw = call_vision_model(
+                    "You are extracting pricing data from an AUSMAR Provisional Sales Estimate (PSE) document. "
+                    "Find the TOTAL DEBITS, TOTAL CREDITS, and PROPOSED NEW HOME PRICE values. "
+                    "These are typically in a summary table near the end of the document. "
+                    "Return ONLY a JSON object: "
+                    '{"total_debits": 123456, "total_credits": 12345, "proposed_new_home_price": 123456}. '
+                    "Return the numbers WITHOUT dollar signs or commas. If not found, use null.",
+                    "Extract the total debits, total credits, and proposed new home price from these PSE pages.",
+                    pages_to_check,
+                )
+                pdf_totals = parse_json_from_llm(raw)
+                analysis["pdf_totals"] = pdf_totals
+
+                pdf_price = pdf_totals.get("proposed_new_home_price")
+                if pdf_price is not None:
+                    analysis["pdf_proposed_price"] = pdf_price
+                    excel_price = excel_totals["proposed_price"]
+                    price_diff = abs(excel_price - pdf_price)
+                    analysis["price_difference"] = price_diff
+
+                    if price_diff > 100:
+                        issues.append(
+                            f"CRITICAL: PSE price mismatch — Signed PDF total is ${pdf_price:,.0f} "
+                            f"but PSE Excel total is ${excel_price:,.0f} "
+                            f"(difference: ${price_diff:,.0f}). "
+                            f"The signed document and spreadsheet must match."
+                        )
+                    else:
+                        analysis["prices_match"] = True
+        except Exception as e:
+            warnings.append(f"Could not compare PSE PDF vs Excel totals: {str(e)}")
+
+    # === CRITICAL CHECK: Price sheet period vs deposit date ===
+    excel_period = excel_totals.get("pricing_period") or ""
+    deposit_date_str = (results or {}).get("deposit_date", "") or ""
+
+    if excel_period and deposit_date_str:
+        analysis["excel_pricing_period"] = excel_period
+        analysis["deposit_date"] = deposit_date_str
+
+        # Parse the deposit date to get the month
+        MONTH_MAP = {
+            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        }
+        deposit_month = None
+        # Try DD/MM/YY or DD/MM/YYYY format
+        date_match = re.search(r'(\d{1,2})/(\d{1,2})/(\d{2,4})', deposit_date_str)
+        if date_match:
+            deposit_month = int(date_match.group(2))
+
+        # Parse the pricing period months (e.g., "Dec-Jan")
+        period_months = []
+        for m_name, m_num in MONTH_MAP.items():
+            if m_name in excel_period.lower():
+                period_months.append(m_num)
+
+        if deposit_month and period_months:
+            # Check if deposit month falls within the pricing period
+            # Handle wrap-around (e.g., Dec-Jan = months 12, 1)
+            deposit_in_period = deposit_month in period_months
+            analysis["deposit_month"] = deposit_month
+            analysis["period_months"] = period_months
+
+            if not deposit_in_period:
+                period_names = excel_period
+                month_name = list(MONTH_MAP.keys())[deposit_month - 1].title()
+                issues.append(
+                    f"CRITICAL: Wrong price sheet — PSE Excel is for {period_names} pricing "
+                    f"but the deposit was paid in {month_name} (date: {deposit_date_str}). "
+                    f"The PSE must use the price sheet that was current when the deposit was paid."
+                )
+            else:
+                analysis["price_sheet_period_valid"] = True
 
     return {"issues": issues, "warnings": warnings, "analysis": analysis}
 
@@ -1610,48 +1774,76 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         if gs_consultant:
             results["consultant_name"] = gs_consultant
 
-        # === Extract consultant name from PSE Doc if GeoSite didn't provide it ===
-        if not results["consultant_name"] and "pse_doc" in file_map:
-            try:
-                pse_path = file_map["pse_doc"]["full_path"]
-                # Try text extraction first (fast)
-                pse_text = extract_pdf_text(pse_path, max_pages=1)
-                if pse_text:
-                    # Look for "Salesperson" field in text
-                    for line in pse_text.splitlines():
-                        if "salesperson" in line.lower():
-                            # Extract name after "Salesperson" label
-                            parts = line.split()
-                            idx = next((i for i, p in enumerate(parts) if "salesperson" in p.lower()), -1)
-                            if idx >= 0 and idx + 1 < len(parts):
-                                name_candidate = " ".join(parts[idx+1:idx+4]).strip()
-                                if name_candidate and len(name_candidate) > 2:
-                                    results["consultant_name"] = name_candidate
-                                    break
-                if not results["consultant_name"]:
-                    # PSE is scanned — use vision to extract salesperson name from page 1
+        # === Extract consultant name: ITP first (most reliable), then PSE Doc fallback ===
+        if not results["consultant_name"]:
+            # Priority 1: ITP form — has "CONSULTANT — NAME" in bold header on page 1
+            if "itp" in file_map:
+                try:
+                    itp_path = file_map["itp"]["full_path"]
+                    itp_pages = pdf_all_pages_to_base64(itp_path, dpi=100, max_pages=1)
+                    if itp_pages:
+                        raw = call_vision_model(
+                            "You are extracting data from an AUSMAR Intention to Purchase form. "
+                            "The CONSULTANT name is shown in BOLD at the top right of the form, "
+                            "next to the word CONSULTANT. It is NOT the purchaser name. "
+                            "The purchaser names are under PURCHASER/S DETAILS on the left. "
+                            "Return ONLY a JSON object: "
+                            '{"consultant_name": "Full Name", "purchaser_names": ["Name 1", "Name 2"], '
+                            '"lot_number": "number", "street": "name", "estate": "name", '
+                            '"deposit_date": "DD/MM/YY as written", "land_price": "amount"}. '
+                            "If a field is not visible, use null.",
+                            "Extract the CONSULTANT name (bold, top right), purchaser names, lot details, and deposit date.",
+                            itp_pages,
+                        )
+                        itp_info = parse_json_from_llm(raw)
+                        if itp_info.get("consultant_name"):
+                            results["consultant_name"] = itp_info["consultant_name"]
+                        if itp_info.get("purchaser_names"):
+                            results["purchaser_names"] = itp_info["purchaser_names"]
+                        if itp_info.get("deposit_date"):
+                            results["deposit_date"] = itp_info["deposit_date"]
+                        if itp_info.get("lot_number"):
+                            results["lot_number"] = itp_info["lot_number"]
+                        if itp_info.get("street"):
+                            results["street"] = itp_info["street"]
+                        if itp_info.get("estate"):
+                            results["estate"] = itp_info["estate"]
+                        if itp_info.get("land_price"):
+                            results["land_price"] = itp_info["land_price"]
+                except Exception as e:
+                    print(f"[WARN] Consultant name extraction from ITP failed: {e}")
+
+            # Priority 2: PSE Doc page 1 — has "Salesperson: Name" field
+            if not results["consultant_name"] and "pse_doc" in file_map:
+                try:
+                    pse_path = file_map["pse_doc"]["full_path"]
                     pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=1)
                     if pse_pages:
                         raw = call_vision_model(
-                            "You are extracting data from an AUSMAR Provisional Sales Estimate document. "
-                            "Find the Salesperson field and return ONLY a JSON object: "
-                            '{"salesperson": "Full Name", "client_name": "Full Name", "job_code": "code", "site_address": "address"}. '
+                            "You are extracting data from an AUSMAR Provisional Sales Estimate (PSE) document. "
+                            "The Salesperson name is near the top of page 1, labelled 'Salesperson:'. "
+                            "This is the consultant/sales person who created the PSE. "
+                            "Do NOT confuse with the client/purchaser name. "
+                            "Return ONLY a JSON object: "
+                            '{"salesperson": "Full Name", "client_name": "Full Name", '
+                            '"job_code": "code", "site_address": "address", "pricing_period": "month-month year"}. '
                             "If a field is not visible, use null.",
-                            "Extract the salesperson name, client name, job code, and site address from this PSE document.",
+                            "Extract the salesperson name, client name, job code, site address, and pricing period.",
                             pse_pages,
                         )
                         pse_info = parse_json_from_llm(raw)
                         if pse_info.get("salesperson"):
                             results["consultant_name"] = pse_info["salesperson"]
-                        # Also store client name and job code if found
                         if pse_info.get("client_name"):
                             results["client_name"] = pse_info["client_name"]
                         if pse_info.get("job_code") and not results.get("deal_code"):
                             results["deal_code"] = pse_info["job_code"]
                         if pse_info.get("site_address"):
                             results["site_address"] = pse_info["site_address"]
-            except Exception as e:
-                print(f"[WARN] Consultant name extraction from PSE failed: {e}")
+                        if pse_info.get("pricing_period"):
+                            results["pricing_period"] = pse_info["pricing_period"]
+                except Exception as e:
+                    print(f"[WARN] Consultant name extraction from PSE failed: {e}")
 
         # === Check 4: Plan-to-Lot Fit ===
         _progress(55, "Verifying plan-to-lot fit...")
@@ -1677,7 +1869,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
 
         # === Check 6: PSE Excel ===
         _progress(82, "Checking PSE patterns...")
-        pse_result = check_pse_excel(file_map, gs_analysis)
+        pse_result = check_pse_excel(file_map, gs_analysis, results)
         results["checks"]["pse_analysis"] = {
             "issues": pse_result["issues"],
             "warnings": pse_result["warnings"],
