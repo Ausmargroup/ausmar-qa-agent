@@ -1,0 +1,18 @@
+[Unit]
+Description=AUSMAR PSE QA Agent
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ausmar-qa-agent
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/ubuntu/ausmar-qa-agent/.env
+ExecStart=/usr/bin/python3 /home/ubuntu/ausmar-qa-agent/app.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/ubuntu/ausmar-qa-agent/logs/app.log
+StandardError=append:/home/ubuntu/ausmar-qa-agent/logs/app.log
+
+[Install]
+WantedBy=multi-user.target

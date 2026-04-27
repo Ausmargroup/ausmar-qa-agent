@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: ausmar-qa-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+    disk:
+      name: qa-data
+      mountPath: /app/data
+      sizeGB: 1

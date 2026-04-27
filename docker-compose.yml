@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  qa-agent:
+    build: .
+    container_name: ausmar-qa-agent
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - PORT=5000
+    volumes:
+      # Persist database and uploaded files across container restarts
+      - qa-data:/app/data
+      - qa-corrected:/app/corrected_zips
+      - qa-prelogs:/app/prelog_uploads
+
+volumes:
+  qa-data:
+  qa-corrected:
+  qa-prelogs:

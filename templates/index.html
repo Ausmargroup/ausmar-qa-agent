@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUSMAR PSE QA Agent</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--p:#1a365d;--pl:#2c5282;--acc:#e53e3e;--grn:#38a169;--ylw:#d69e2e;--org:#dd6b20;--blu:#3182ce;
+--g50:#f7fafc;--g100:#edf2f7;--g200:#e2e8f0;--g300:#cbd5e0;--g400:#a0aec0;--g500:#718096;--g600:#4a5568;--g700:#2d3748;--g800:#1a202c}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--g50);color:var(--g700);line-height:1.5;font-size:14px}
+a{color:var(--blu);text-decoration:none}
+
+/* Header */
+.hdr{background:var(--p);color:#fff;padding:0.8rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.hdr h1{font-size:1.2rem;font-weight:700}.hdr .sub{font-size:0.75rem;opacity:0.7}
+.hdr nav{display:flex;gap:0.5rem}
+.hdr nav button{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:0.35rem 0.75rem;border-radius:4px;cursor:pointer;font-size:0.8rem;transition:0.15s}
+.hdr nav button:hover{background:rgba(255,255,255,0.25)}
+.hdr nav button.active{background:rgba(255,255,255,0.3);font-weight:600}
+
+/* Layout */
+.wrap{max-width:1000px;margin:1.5rem auto;padding:0 1rem}
+.section{display:none}.section.active{display:block}
+
+/* Cards */
+.card{background:#fff;border-radius:8px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.08);margin-bottom:1rem}
+.card h2{font-size:1rem;color:var(--p);margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem}
+.card h3{font-size:0.9rem;color:var(--g600);margin:0.75rem 0 0.4rem}
+
+/* Buttons */
+.btn{padding:0.45rem 1rem;border:none;border-radius:5px;cursor:pointer;font-size:0.85rem;font-weight:600;transition:0.15s}
+.btn-primary{background:var(--p);color:#fff}.btn-primary:hover{background:var(--pl)}
+.btn-green{background:var(--grn);color:#fff}.btn-red{background:var(--acc);color:#fff}
+.btn-outline{background:transparent;border:1px solid var(--g300);color:var(--g600)}.btn-outline:hover{background:var(--g100)}
+.btn-sm{padding:0.25rem 0.6rem;font-size:0.75rem}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* Forms */
+input,select,textarea{padding:0.4rem 0.6rem;border:1px solid var(--g300);border-radius:4px;font-size:0.85rem;width:100%;font-family:inherit}
+textarea{resize:vertical;min-height:60px}
+label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bottom:0.2rem}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem}
+.form-row.full{grid-template-columns:1fr}
+
+/* Upload zone */
+.upzone{border:2px dashed var(--g300);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;transition:0.2s}
+.upzone:hover,.upzone.over{border-color:var(--p);background:#ebf4ff}
+.upzone .ic{font-size:2rem;margin-bottom:0.3rem}
+.upzone p{color:var(--g500);font-size:0.9rem}
+.upzone .fmt{font-size:0.75rem;color:var(--g400)}
+
+/* File info bar */
+.fbar{display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.8rem;background:var(--g100);border-radius:5px;margin-top:0.75rem}
+.fbar .nm{font-weight:600;font-size:0.85rem}.fbar .sz{color:var(--g500);font-size:0.8rem}
+
+/* Progress */
+.prog{margin:1rem 0}.prog-bar{background:var(--g200);border-radius:99px;height:6px;overflow:hidden}
+.prog-fill{height:100%;background:var(--p);border-radius:99px;width:0%;transition:width 0.5s}
+.prog-txt{font-size:0.8rem;color:var(--g500);margin-top:0.3rem}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.loading{animation:pulse 1.5s ease-in-out infinite}
+
+/* Verdict */
+.verdict{border-radius:8px;padding:1.2rem 1.5rem;color:#fff;margin-bottom:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.12)}
+.verdict.v-accepted{background:var(--grn)}.verdict.v-minor{background:var(--blu)}
+.verdict.v-concerns{background:var(--org)}.verdict.v-not-accepted{background:var(--acc)}
+.verdict.v-parked{background:var(--g500)}.verdict.v-error{background:var(--g700)}
+.verdict .vl{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;opacity:0.85}
+.verdict .vt{font-size:1.4rem;font-weight:700;margin:0.2rem 0}
+.verdict .vr{font-size:0.9rem;opacity:0.95}
+
+/* Badges */
+.badge{font-size:0.65rem;padding:0.1rem 0.45rem;border-radius:99px;font-weight:700;display:inline-block;vertical-align:middle}
+.b-pass{background:#c6f6d5;color:#276749}.b-warn{background:#fefcbf;color:#975a16}.b-fail{background:#fed7d7;color:#9b2c2c}
+.b-info{background:#bee3f8;color:#2a4365}
+
+/* Issue list */
+.ilist{list-style:none;padding:0}.ilist li{padding:0.35rem 0 0.35rem 1rem;position:relative;font-size:0.85rem;border-bottom:1px solid var(--g100)}
+.ilist li:last-child{border:none}
+.ilist li::before{content:'';position:absolute;left:0;top:0.6rem;width:7px;height:7px;border-radius:50%}
+.ilist li.crit::before{background:var(--acc)}.ilist li.warn::before{background:var(--ylw)}
+.ilist li.ok::before{background:var(--grn)}.ilist li.info::before{background:var(--blu)}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--g200);margin-bottom:0}
+.tab{padding:0.5rem 1rem;cursor:pointer;font-size:0.8rem;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--g500)}
+.tab.active{color:var(--p);border-bottom-color:var(--p);font-weight:600}
+.tpanel{display:none;padding:1rem 0}.tpanel.active{display:block}
+
+/* Output block */
+.oblock{background:var(--g50);border:1px solid var(--g200);border-radius:5px;padding:0.8rem;font-size:0.85rem;white-space:pre-wrap;line-height:1.6;max-height:350px;overflow-y:auto}
+
+/* Copy button */
+.cpbtn{float:right;background:var(--g200);border:none;padding:0.2rem 0.5rem;border-radius:3px;cursor:pointer;font-size:0.7rem}
+.cpbtn:hover{background:var(--g300)}
+
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:0.8rem;margin:0.5rem 0}
+.tbl th,.tbl td{padding:0.4rem 0.6rem;border:1px solid var(--g200);text-align:left}
+.tbl th{background:var(--g100);font-weight:600;color:var(--g600)}
+.tbl tr:hover{background:var(--g50)}
+
+/* Stats row */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;margin-bottom:1rem}
+.stat{background:#fff;border-radius:8px;padding:1rem;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+.stat .num{font-size:1.8rem;font-weight:700;color:var(--p)}.stat .lbl{font-size:0.75rem;color:var(--g500)}
+
+/* Meta pills */
+.meta{display:flex;gap:0.75rem;flex-wrap:wrap;font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem}
+.meta span{background:var(--g100);padding:0.15rem 0.5rem;border-radius:3px}
+
+/* Corrections */
+.corr{background:#f0fff4;border:1px solid #c6f6d5;border-radius:5px;padding:0.6rem 0.8rem;margin:0.5rem 0}
+.corr h4{font-size:0.8rem;color:#276749;margin-bottom:0.3rem}
+.corr ul{margin:0;padding-left:1.2rem;font-size:0.8rem;color:#2f855a}
+
+/* Feedback section */
+.fb-item{display:flex;gap:0.5rem;align-items:flex-start;padding:0.5rem 0;border-bottom:1px solid var(--g100)}
+.fb-btns{display:flex;gap:0.3rem;flex-shrink:0}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:100;align-items:center;justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:#fff;border-radius:8px;padding:1.5rem;width:92%;max-width:640px;max-height:85vh;overflow-y:auto;position:relative}
+.modal .close{position:absolute;top:0.8rem;right:1rem;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--g400)}
+.modal h2{font-size:1.05rem;margin-bottom:0.75rem}
+
+/* Responsive */
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.hdr nav{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div><h1>AUSMAR PSE QA Agent</h1><div class="sub">Deposit Submission Review</div></div>
+  <nav>
+    <button class="active" onclick="showSection('sec-review',this)">New Review</button>
+    <button onclick="showSection('sec-history',this);loadHistory()">History</button>
+    <button onclick="showSection('sec-prelog',this);loadPrelogs()">Pre-Log</button>
+    <button onclick="showSection('sec-plans',this);loadPlans()">Plans</button>
+  </nav>
+</div>
+
+<div class="wrap">
+
+<!-- ============ NEW REVIEW ============ -->
+<div id="sec-review" class="section active">
+
+  <!-- Upload -->
+  <div class="card" id="uploadCard">
+    <div class="upzone" id="upzone" onclick="$('fileIn').click()">
+      <div class="ic">&#128193;</div>
+      <p><strong>Drop submission zip here</strong> or click to browse</p>
+      <div class="fmt">Deal-code named .zip (e.g. S26TLS.zip)</div>
+    </div>
+    <input type="file" id="fileIn" accept=".zip" style="display:none" onchange="onFile(event)">
+    <div class="fbar" id="fbar" style="display:none">
+      <div><span class="nm" id="fName"></span> <span class="sz" id="fSize"></span></div>
+      <button class="btn btn-sm btn-outline" onclick="clearFile()">Remove</button>
+    </div>
+    <button class="btn btn-primary" id="btnGo" style="width:100%;margin-top:0.75rem" onclick="startReview()" disabled>Run QA Review</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="card" id="progCard" style="display:none">
+    <h2 class="loading" id="progTitle">Analysing submission...</h2>
+    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="progFill"></div></div></div>
+    <div class="prog-txt" id="progTxt">Extracting zip...</div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsArea"></div>
+</div>
+
+<!-- ============ HISTORY ============ -->
+<div id="sec-history" class="section">
+  <div id="statsRow" class="stats"></div>
+  <div class="card"><h2>Review History</h2><div id="historyTable"></div></div>
+  <div id="historyDetail"></div>
+</div>
+
+<!-- ============ PRE-LOG ============ -->
+<div id="sec-prelog" class="section">
+  <div class="card">
+    <h2>Pre-Log Job Info</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Upload deposit info before the zip arrives. The system will cross-check when the zip is submitted.</p>
+    <div class="form-row"><div><label>Deal Code *</label><input id="pl-code" placeholder="e.g. S26TLS"></div><div><label>Consultant</label><input id="pl-consultant" placeholder="e.g. Ian Sullivan"></div></div>
+    <div class="form-row"><div><label>Deposit Amount</label><select id="pl-amount"><option value="0">Select...</option><option value="2500">$2,500 (NHP)</option><option value="4000">$4,000 (STC)</option></select></div><div><label>Customer Name(s)</label><input id="pl-customers" placeholder="e.g. John & Jane Smith"></div></div>
+    <div class="form-row full"><div><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Any relevant notes..."></textarea></div></div>
+    <div class="form-row full"><div><label>Attach Files (deposit receipt, ITP, licences, email)</label><input type="file" id="pl-files" multiple></div></div>
+    <button class="btn btn-primary" onclick="submitPrelog()">Save Pre-Log</button>
+  </div>
+  <div class="card"><h2>Pre-Logged Jobs</h2><div id="prelogTable"></div></div>
+</div>
+
+<!-- ============ PLANS ============ -->
+<div id="sec-plans" class="section">
+  <div class="card">
+    <h2>Known House Plans</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Plans used for lot-fit verification. Add new plans as they're encountered in submissions.</p>
+    <div id="plansTable"></div>
+    <h3 style="margin-top:1rem">Add New Plan</h3>
+    <div class="form-row"><div><label>Plan Name *</label><input id="np-name" placeholder="e.g. Baltimore 400"></div><div><label>Min Site Width (m) *</label><input id="np-width" type="number" step="0.1"></div></div>
+    <div class="form-row"><div><label>Min Site Length (m) *</label><input id="np-length" type="number" step="0.1"></div><div><label>Total Area (m2)</label><input id="np-area" type="number" step="0.01"></div></div>
+    <div class="form-row"><div><label>Width incl Eaves (m)</label><input id="np-eaves" type="number" step="0.01"></div><div><label>House Width (m)</label><input id="np-hwidth" type="number" step="0.01"></div></div>
+    <button class="btn btn-green" onclick="addPlan()">Add Plan</button>
+  </div>
+</div>
+
+</div><!-- /wrap -->
+
+<!-- Review Detail Modal -->
+<div class="modal-bg" id="detailModal">
+  <div class="modal" style="max-width:800px">
+    <button class="close" onclick="closeModal('detailModal')">&times;</button>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+let selFile=null;
+
+// --- Navigation ---
+function showSection(id,btn){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+  document.querySelectorAll('.hdr nav button').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+}
+
+// --- File handling ---
+const uz=$('upzone');
+uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('over')});
+uz.addEventListener('dragleave',()=>uz.classList.remove('over'));
+uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('over');if(e.dataTransfer.files[0]?.name.endsWith('.zip')){selFile=e.dataTransfer.files[0];showFile()}else alert('Upload a .zip file')});
+
+function onFile(e){if(e.target.files[0]){selFile=e.target.files[0];showFile()}}
+function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(selFile.size/1024/1024).toFixed(1)+' MB';$('fbar').style.display='flex';$('btnGo').disabled=false}
+function clearFile(){selFile=null;$('fbar').style.display='none';$('btnGo').disabled=true;$('fileIn').value=''}
+
+// --- Progress ---
+const steps=[{p:10,t:'Extracting zip and checking structure...'},{p:25,t:'Checking document completeness...'},{p:40,t:'Analysing GeoSite with vision AI...'},{p:60,t:'Verifying plan-to-lot fit...'},{p:75,t:'Analysing Red Pen markups...'},{p:90,t:'Generating verdict and outputs...'}];
+function animProg(){let i=0;return setInterval(()=>{if(i<steps.length){$('progFill').style.width=steps[i].p+'%';$('progTxt').textContent=steps[i].t;i++}},3500)}
+
+// --- Start Review ---
+async function startReview(){
+  if(!selFile)return;
+  $('uploadCard').style.display='none';$('progCard').style.display='block';$('resultsArea').innerHTML='';
+  const iv=animProg();
+  const fd=new FormData();fd.append('file',selFile);
+  try{
+    const r=await fetch('/api/review',{method:'POST',body:fd});
+    const d=await r.json();
+    clearInterval(iv);$('progFill').style.width='100%';$('progTxt').textContent='Complete.';
+    setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
+  }catch(e){clearInterval(iv);$('progTitle').textContent='Failed';$('progTitle').classList.remove('loading');$('progTxt').textContent=e.message}
+}
+
+// --- Render Results ---
+function vclass(v){if(!v)return'v-error';const u=v.toUpperCase();if(u==='ACCEPTED')return'v-accepted';if(u.includes('MINOR'))return'v-minor';if(u.includes('CONCERN'))return'v-concerns';if(u.includes('NOT ACCEPTED'))return'v-not-accepted';if(u.includes('PARKED'))return'v-parked';return'v-error'}
+function badge(iss,wrn){if(iss?.length)return'<span class="badge b-fail">FAIL</span>';if(wrn?.length)return'<span class="badge b-warn">WARN</span>';return'<span class="badge b-pass">PASS</span>'}
+function ilist(iss,wrn){let h='<ul class="ilist">';(iss||[]).forEach(i=>h+=`<li class="crit">${esc(i)}</li>`);(wrn||[]).forEach(w=>h+=`<li class="warn">${esc(w)}</li>`);if(!iss?.length&&!wrn?.length)h+='<li class="ok">No issues found</li>';return h+'</ul>'}
+
+function renderResults(d){
+  const a=$('resultsArea');
+  if(d.error&&!d.checks){a.innerHTML=`<div class="verdict v-error"><div class="vl">Error</div><div class="vt">Review Failed</div><div class="vr">${esc(d.error)}</div></div><button class="btn btn-primary" onclick="resetReview()">New Review</button>`;return}
+  const v=d.verdict_data||{};const c=d.checks||{};const rid=d.review_id;
+  let h='';
+
+  // Verdict
+  h+=`<div class="verdict ${vclass(v.verdict)}"><div class="vl">QA Verdict</div><div class="vt">${esc(v.verdict||'UNKNOWN')}</div><div class="vr">${esc(v.verdict_reason||'')}</div></div>`;
+
+  // Meta
+  h+=`<div class="meta"><span>Zip: ${esc(d.zip_name||'')}</span><span>Type: ${esc(d.deposit_type||'?')}</span><span>Files: ${c.file_structure?.file_count||'?'}</span>`;
+  if(d.consultant_name)h+=`<span>Consultant: ${esc(d.consultant_name)}</span>`;
+  h+=`<span>Review #${rid||'?'}</span></div>`;
+
+  // Corrections applied
+  if(d.corrections_applied?.length){
+    h+=`<div class="corr"><h4>Auto-Corrections Applied (${d.corrections_applied.length})</h4><ul>`;
+    d.corrections_applied.forEach(c2=>h+=`<li>${esc(c2)}</li>`);
+    h+=`</ul></div>`;
+    if(d.corrected_zip_filename)h+=`<div style="margin-bottom:0.75rem"><a href="/api/download/${rid}" class="btn btn-sm btn-green" download>Download Corrected Zip</a></div>`;
+  }
+
+  // Critical issues
+  if(v.critical_issues?.length){
+    h+=`<div class="card"><h2><span class="badge b-fail">CRITICAL</span> Issues</h2><ul class="ilist">`;
+    v.critical_issues.forEach(i=>h+=`<li class="crit">${esc(i)}</li>`);
+    h+=`</ul></div>`;
+  }
+
+  // Check tabs
+  h+=`<div class="card"><h2>Detailed Checks</h2><div class="tabs">`;
+  const tabs=[['structure','Structure',c.file_structure],['docs','Documents',c.document_completeness],['geosite','GeoSite',c.geosite_verification],['fit','Lot Fit',c.plan_to_lot_fit],['redpen','Red Pen',c.red_pen_markup],['pse','PSE Analysis',c.pse_analysis]];
+  tabs.forEach(([id,lbl,data],i)=>h+=`<div class="tab${i===0?' active':''}" onclick="switchTab(this,'tp-${id}')">${lbl} ${data?badge(data.issues,data.warnings):''}</div>`);
+  h+=`</div>`;
+
+  // Structure panel
+  h+=`<div class="tpanel active" id="tp-structure">${c.file_structure?ilist(c.file_structure.issues,c.file_structure.warnings):'No data'}`;
+  if(c.file_structure?.files){h+=`<h3 style="margin-top:0.5rem">Files</h3><div style="font-size:0.8rem">`;c.file_structure.files.forEach(f=>h+=`<div style="padding:0.15rem 0">&#128196; ${esc(f)}</div>`);h+=`</div>`}
+  h+=`</div>`;
+
+  // Docs panel
+  h+=`<div class="tpanel" id="tp-docs">${c.document_completeness?ilist(c.document_completeness.issues,c.document_completeness.warnings):'No data'}`;
+  if(c.document_completeness?.found_documents){h+=`<h3>Found</h3><div style="font-size:0.8rem">`;c.document_completeness.found_documents.forEach(d2=>h+=`<div style="padding:0.15rem 0;color:var(--grn)">&#10003; ${esc(d2)}</div>`);h+=`</div>`}
+  h+=`</div>`;
+
+  // GeoSite panel
+  h+=`<div class="tpanel" id="tp-geosite">${c.geosite_verification?ilist(c.geosite_verification.issues,c.geosite_verification.warnings):'No data'}</div>`;
+
+  // Lot Fit panel
+  h+=`<div class="tpanel" id="tp-fit">`;
+  if(c.plan_to_lot_fit){
+    h+=`<div style="font-size:0.85rem;margin-bottom:0.5rem">Plan: <strong>${esc(c.plan_to_lot_fit.plan_identified||'Unknown')}</strong> | Result: <strong>${esc(c.plan_to_lot_fit.fit_result||'Unknown')}</strong></div>`;
+    h+=ilist(c.plan_to_lot_fit.issues,c.plan_to_lot_fit.warnings);
+  }else h+='No data';
+  h+=`</div>`;
+
+  // Red Pen panel
+  h+=`<div class="tpanel" id="tp-redpen">${c.red_pen_markup?ilist(c.red_pen_markup.issues,c.red_pen_markup.warnings):'No data'}</div>`;
+
+  // PSE Analysis panel
+  h+=`<div class="tpanel" id="tp-pse">${c.pse_analysis?ilist(c.pse_analysis.issues,c.pse_analysis.warnings):'No data'}</div>`;
+
+  // Prelog crosscheck panel (if exists)
+  if(c.prelog_crosscheck){
+    h+=`<div style="margin-top:0.5rem;background:#fffff0;border:1px solid #fefcbf;border-radius:5px;padding:0.6rem 0.8rem"><h4 style="font-size:0.8rem;color:#975a16;margin-bottom:0.3rem">Pre-Log Cross-Check</h4>`;
+    h+=ilist(c.prelog_crosscheck.issues,c.prelog_crosscheck.warnings);
+    h+=`</div>`;
+  }
+  h+=`</div>`;// close card
+
+  // Heath note
+  if(v.heath_review_note){
+    h+=`<div class="card"><h2>Heath Review Note <button class="cpbtn" onclick="copyBlock('heathBlock')">Copy</button></h2><div class="oblock" id="heathBlock">${esc(v.heath_review_note)}</div></div>`;
+  }
+
+  // Consultant email
+  if(v.consultant_feedback_email){
+    h+=`<div class="card"><h2>Consultant Feedback Email <button class="cpbtn" onclick="copyBlock('emailBlock')">Copy</button></h2><div class="oblock" id="emailBlock">${esc(v.consultant_feedback_email)}</div></div>`;
+  }
+
+  // Feedback section
+  if(rid){
+    h+=`<div class="card" id="fbCard"><h2>Review Feedback</h2>`;
+    h+=`<p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.5rem">Mark issues as correct or false positive. Add notes to help the system learn.</p>`;
+    h+=`<div id="fbItems">`;
+    // Build feedback items from all issues/warnings
+    let allItems=[];
+    for(const[ck,cd]of Object.entries(c)){
+      (cd.issues||[]).forEach(i=>allItems.push({check:ck,text:i,type:'issue'}));
+      (cd.warnings||[]).forEach(w=>allItems.push({check:ck,text:w,type:'warning'}));
+    }
+    if(allItems.length===0)h+=`<p style="font-size:0.8rem;color:var(--grn)">No issues to review.</p>`;
+    allItems.forEach((item,idx)=>{
+      h+=`<div class="fb-item" id="fbi-${idx}">
+        <div style="flex:1;font-size:0.8rem"><span class="badge ${item.type==='issue'?'b-fail':'b-warn'}">${item.type}</span> ${esc(item.text)}</div>
+        <div class="fb-btns">
+          <button class="btn btn-sm btn-green" onclick="sendFb(${rid},'${esc(item.check)}',\`${esc(item.text)}\`,true,${idx})">Correct</button>
+          <button class="btn btn-sm btn-red" onclick="promptFbNote(${rid},'${esc(item.check)}',\`${esc(item.text)}\`,${idx})">False Positive</button>
+        </div>
+      </div>`;
+    });
+    h+=`</div>`;
+    h+=`<div style="margin-top:0.75rem"><label>General Notes</label><textarea id="fbGeneral" rows="2" placeholder="Any additional notes about this review..."></textarea>
+    <button class="btn btn-sm btn-primary" style="margin-top:0.4rem" onclick="sendGeneralFb(${rid})">Save Notes</button></div>`;
+    h+=`</div>`;
+  }
+
+  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetReview()">Run Another Review</button>`;
+  a.innerHTML=h;
+}
+
+function switchTab(el,panelId){
+  el.closest('.card').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
+  el.closest('.card').querySelectorAll('.tpanel').forEach(p=>p.classList.remove('active'));
+  $(panelId).classList.add('active');
+}
+
+function copyBlock(id){
+  navigator.clipboard.writeText($(id).textContent).then(()=>{
+    const btn=$(id).closest('.card').querySelector('.cpbtn');
+    if(btn){const o=btn.textContent;btn.textContent='Copied!';setTimeout(()=>btn.textContent=o,1200)}
+  });
+}
+
+function resetReview(){
+  clearFile();$('uploadCard').style.display='block';$('progCard').style.display='none';$('resultsArea').innerHTML='';$('progFill').style.width='0%';
+}
+
+// --- Feedback ---
+async function sendFb(rid,check,text,correct,idx){
+  const notes=correct?'':prompt('Why is this a false positive?')||'';
+  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:check,issue_text:text,is_correct:correct,notes,submitted_by:'staff'})});
+  const el=$(`fbi-${idx}`);if(el){el.style.opacity='0.4';el.innerHTML=`<div style="flex:1;font-size:0.8rem">${esc(text)} — <strong>${correct?'Confirmed correct':'Marked false positive'}</strong></div>`}
+}
+function promptFbNote(rid,check,text,idx){sendFb(rid,check,text,false,idx)}
+async function sendGeneralFb(rid){
+  const notes=$('fbGeneral').value.trim();if(!notes)return;
+  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:'general',issue_text:'General note',is_correct:true,notes,submitted_by:'staff'})});
+  $('fbGeneral').value='';alert('Notes saved.');
+}
+
+// --- History ---
+async function loadHistory(){
+  const[stats,reviews]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/reviews').then(r=>r.json())]);
+  $('statsRow').innerHTML=`
+    <div class="stat"><div class="num">${stats.total}</div><div class="lbl">Total Reviews</div></div>
+    <div class="stat"><div class="num" style="color:var(--grn)">${stats.accepted}</div><div class="lbl">Accepted</div></div>
+    <div class="stat"><div class="num" style="color:var(--acc)">${stats.not_accepted}</div><div class="lbl">Not Accepted</div></div>
+    <div class="stat"><div class="num" style="color:var(--org)">${stats.concerns}</div><div class="lbl">Concerns</div></div>
+    <div class="stat"><div class="num" style="color:var(--g500)">${stats.parked}</div><div class="lbl">Parked</div></div>`;
+
+  if(!reviews.length){$('historyTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No reviews yet.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Type</th><th>Date</th><th></th></tr></thead><tbody>';
+  reviews.forEach(r=>{
+    const vc=r.verdict||'';
+    let bcls='b-info';if(vc.includes('NOT ACCEPTED'))bcls='b-fail';else if(vc.includes('CONCERN'))bcls='b-warn';else if(vc.includes('ACCEPTED'))bcls='b-pass';else if(vc.includes('PARKED'))bcls='b-info';
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||r.zip_name)}</strong></td><td><span class="badge ${bcls}">${esc(vc)}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(r.deposit_type||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('historyTable').innerHTML=h;
+}
+
+async function viewReview(id){
+  const r=await fetch(`/api/reviews/${id}`).then(r=>r.json());
+  if(r.error){alert(r.error);return}
+  const v=r;
+  let h=`<h2>Review #${v.id} — ${esc(v.deal_code||v.zip_name)}</h2>`;
+  h+=`<div class="meta"><span>Verdict: <strong>${esc(v.verdict)}</strong></span><span>Type: ${esc(v.deposit_type)}</span><span>Consultant: ${esc(v.consultant_name||'-')}</span><span>${v.created_at}</span></div>`;
+  if(v.verdict_reason)h+=`<p style="margin-bottom:0.75rem;font-size:0.85rem">${esc(v.verdict_reason)}</p>`;
+  if(v.corrections_applied?.length){h+=`<div class="corr"><h4>Auto-Corrections</h4><ul>`;v.corrections_applied.forEach(c=>h+=`<li>${esc(c)}</li>`);h+=`</ul></div>`}
+  if(v.corrected_zip_path)h+=`<div style="margin:0.5rem 0"><a href="/api/download/${v.id}" class="btn btn-sm btn-green" download>Download Corrected Zip</a></div>`;
+  if(v.heath_note)h+=`<h3>Heath Review Note</h3><div class="oblock">${esc(v.heath_note)}</div>`;
+  if(v.consultant_email)h+=`<h3 style="margin-top:0.75rem">Consultant Email</h3><div class="oblock">${esc(v.consultant_email)}</div>`;
+  if(v.feedback?.length){
+    h+=`<h3 style="margin-top:0.75rem">Feedback (${v.feedback.length})</h3>`;
+    v.feedback.forEach(fb=>{
+      h+=`<div style="font-size:0.8rem;padding:0.3rem 0;border-bottom:1px solid var(--g100)"><span class="badge ${fb.is_correct?'b-pass':'b-fail'}">${fb.is_correct?'Correct':'False Positive'}</span> [${esc(fb.check_name)}] ${esc(fb.issue_text)}${fb.notes?' — <em>'+esc(fb.notes)+'</em>':''}</div>`;
+    });
+  }
+  $('detailContent').innerHTML=h;
+  $('detailModal').classList.add('show');
+}
+
+function closeModal(id){$(id).classList.remove('show')}
+$('detailModal').addEventListener('click',e=>{if(e.target===$('detailModal'))closeModal('detailModal')});
+
+// --- Plans ---
+async function loadPlans(){
+  const plans=await fetch('/api/plans').then(r=>r.json());
+  if(!plans.length){$('plansTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No plans yet.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>Plan</th><th>Min Width</th><th>Min Length</th><th>Area</th><th>Eaves Width</th><th>House Width</th><th></th></tr></thead><tbody>';
+  plans.forEach(p=>{
+    h+=`<tr><td><strong>${esc(p.name)}</strong></td><td>${p.min_width}m</td><td>${p.min_length}m</td><td>${p.total_area||'-'} m&sup2;</td><td>${p.width_incl_eaves||'-'}m</td><td>${p.house_width||'-'}m</td><td><button class="btn btn-sm btn-red" onclick="delPlan(${p.id})">Del</button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('plansTable').innerHTML=h;
+}
+
+async function addPlan(){
+  const name=$('np-name').value.trim();if(!name){alert('Plan name required');return}
+  await fetch('/api/plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,min_width:$('np-width').value||0,min_length:$('np-length').value||0,total_area:$('np-area').value||0,width_incl_eaves:$('np-eaves').value||0,house_width:$('np-hwidth').value||0})});
+  ['np-name','np-width','np-length','np-area','np-eaves','np-hwidth'].forEach(id=>$(id).value='');
+  loadPlans();
+}
+
+async function delPlan(id){
+  if(!confirm('Delete this plan?'))return;
+  await fetch(`/api/plans/${id}`,{method:'DELETE'});loadPlans();
+}
+
+// --- Pre-logs ---
+async function loadPrelogs(){
+  const pls=await fetch('/api/prelogs').then(r=>r.json());
+  if(!pls.length){$('prelogTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No pre-logged jobs yet.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>Deal Code</th><th>Consultant</th><th>Deposit</th><th>Customer</th><th>Status</th><th>Date</th></tr></thead><tbody>';
+  pls.forEach(p=>{
+    const scls=p.status==='matched'?'b-pass':'b-info';
+    h+=`<tr><td><strong>${esc(p.deal_code)}</strong></td><td>${esc(p.consultant_name||'-')}</td><td>${p.deposit_amount?'$'+p.deposit_amount.toLocaleString():'-'}</td><td>${esc(p.customer_names||'-')}</td><td><span class="badge ${scls}">${esc(p.status)}</span></td><td>${p.created_at?new Date(p.created_at).toLocaleDateString():'-'}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('prelogTable').innerHTML=h;
+}
+
+async function submitPrelog(){
+  const code=$('pl-code').value.trim();if(!code){alert('Deal code required');return}
+  const fd=new FormData();
+  fd.append('deal_code',code);
+  fd.append('consultant_name',$('pl-consultant').value);
+  fd.append('deposit_amount',$('pl-amount').value);
+  fd.append('customer_names',$('pl-customers').value);
+  fd.append('notes',$('pl-notes').value);
+  const files=$('pl-files').files;
+  for(let i=0;i<files.length;i++)fd.append('file_'+i,files[i]);
+  const r=await fetch('/api/prelogs',{method:'POST',body:fd});
+  if(r.ok){['pl-code','pl-consultant','pl-customers','pl-notes'].forEach(id=>$(id).value='');$('pl-amount').value='0';$('pl-files').value='';loadPrelogs();alert('Pre-log saved.')}
+}
+</script>
+</body>
+</html>
