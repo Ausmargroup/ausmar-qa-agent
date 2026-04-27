@@ -168,8 +168,9 @@ CANONICAL_NAMES = {
 LICENCE_BAD_EXTS = {".heic", ".msg", ".webp"}
 JUNK_PATTERNS = {"__macosx", ".ds_store", "thumbs.db", ".tmp", "~$"}
 
-# Known estates with gas bans (from Heath's reviews)
-GAS_BAN_ESTATES = ["gagalba", "aura", "banya"]
+# NOTE: Gas cooktops are permitted in all estates including those with gas-ban covenants.
+# Stockland has issued a ruling approving gas cooktops as an exception to covenant restrictions.
+# Do NOT flag gas cooktops as a QA issue.
 
 # Max image dimension for base64 encoding (saves memory + API cost)
 MAX_IMAGE_DIM = 1024
@@ -1000,7 +1001,8 @@ IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems
 # ---------------------------------------------------------------------------
 # Check 6: PSE Excel Analysis (text-based)
 # Checks from real reviews: NHP/STC mismatch, acoustic categories,
-# gas cooktop in gas-ban estates, facade consistency, solar requirements
+# facade consistency, solar requirements
+# NOTE: Gas cooktops are NOT flagged — Stockland ruling overrides covenant restrictions.
 # ---------------------------------------------------------------------------
 def check_pse_excel(files: list[dict], geosite_analysis: dict) -> dict:
     """Analyse PSE Excel for known issue patterns from real reviews."""
@@ -1018,16 +1020,9 @@ def check_pse_excel(files: list[dict], geosite_analysis: dict) -> dict:
     home_design = geosite_analysis.get("home_design", "") or ""
     facade_name = geosite_analysis.get("facade_name", "") or ""
 
-    # Check for gas ban estates (from Heath's S26MP rejection)
-    if estate_name:
-        for banned in GAS_BAN_ESTATES:
-            if banned in estate_name:
-                warnings.append(
-                    f"Estate '{estate_name}' may have gas restrictions (Gagalba/Aura confirmed). "
-                    f"Verify gas cooktop and LPG HWS are not included in PSE. "
-                    f"If gas is included, swap to induction/electric (real rejection from S26MP)."
-                )
-                break
+    # Gas cooktops: NOT flagged. Stockland has approved gas cooktops as an exception
+    # even in estates where the covenant prohibits gas. This is the only covenant rule
+    # where the 'not allowed' restriction is overridden by Stockland's ruling.
 
     # Facade consistency check (from S26JYTC — GeoSite said Traditional, PSE said Coastal)
     if facade_name and geosite_analysis.get("facade_name"):
@@ -1105,7 +1100,7 @@ DECISION FRAMEWORK (from real AUSMAR reviews):
   * Plan doesn't fit lot (S26TLS — no setbacks, can't verify fit)
   * GeoSite missing/wrong tool/no setbacks
   * Red Pen not in red / not on AUSMAR base plan / no dimensions (S26TLS, S25MLS)
-  * Covenant breach — gas cooktop in gas-ban estate (S26MP)
+  * Covenant breach — other covenant violations (NOTE: gas cooktops are EXEMPT per Stockland ruling)
   * Missing buyer signatures (S26MP — second buyer didn't sign)
   * Missing critical documents
   * Contour survey needed for established lot with fall (S26JW — Heath rejected despite Nikole accepting)
