@@ -40,10 +40,15 @@ def get_client() -> OpenAI:
                 "OPENAI_API_KEY environment variable is not set. "
                 "Set it in the DigitalOcean App Platform environment variables."
             )
-        # Respect OPENAI_BASE_URL if set (e.g. Manus proxy or custom endpoint).
-        # Default to real OpenAI if not set.
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        _client = OpenAI(api_key=api_key, base_url=base_url)
+        # Only set base_url if OPENAI_BASE_URL is explicitly provided.
+        # If not set, do NOT pass base_url at all — let the openai library
+        # use its built-in default (api.openai.com). Hardcoding any URL here
+        # risks routing to a proxy that blocks the DigitalOcean IP.
+        base_url = os.environ.get("OPENAI_BASE_URL")
+        if base_url:
+            _client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            _client = OpenAI(api_key=api_key)
     return _client
 
 # Flag for pdf2image availability
