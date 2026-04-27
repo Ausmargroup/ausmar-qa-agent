@@ -461,8 +461,11 @@ def check_document_completeness(files: list[dict]) -> dict:
 
     # --- CORE REQUIRED DOCUMENTS ---
     core_checks = [
-        ("PSE Doc (Signed)", ["pse doc", "pse_doc", "pse (signed)"]),
-        ("PSE Excel", ["pse excel", ".xlsx", ".xls"]),
+        # PSE Doc: matches 'PSE Doc', 'Provisional Sales Estimate', or any PDF with 'PSE' in name
+        ("PSE Doc (Signed)", ["pse doc", "pse_doc", "pse (signed)", "provisional sales estimate", "provisional_sales_estimate"]),
+        # PSE Excel: matches any spreadsheet format (.xlsx, .xlsm, .xls, .csv) with 'pse' in name,
+        # or explicit 'pse excel' label
+        ("PSE Excel", ["pse excel", "pse_excel"]),
         ("GeoSite Plan (Signed)", ["geosite", "geo site", "geo_site"]),
         ("ITP Form (Signed)", ["itp", "intention to purchase"]),
         ("Deposit Receipt", ["deposit", "receipt"]),
@@ -470,7 +473,31 @@ def check_document_completeness(files: list[dict]) -> dict:
         ("PSE Checklist", ["checklist"]),
     ]
 
+    # Special match: PSE Doc — any PDF whose name contains 'pse' counts
+    pse_doc_found = any(
+        any(kw in fn for kw in ["pse doc", "pse_doc", "pse (signed)", "provisional sales estimate", "provisional_sales_estimate"])
+        or ("pse" in fn and fn.endswith(".pdf"))
+        for fn in filenames_lower
+    )
+    if pse_doc_found:
+        found["PSE Doc (Signed)"] = True
+
+    # Special match: PSE Excel — any spreadsheet (.xlsx/.xlsm/.xls/.csv) whose name contains 'pse' counts
+    spreadsheet_exts = (".xlsx", ".xlsm", ".xls", ".csv")
+    pse_excel_found = any(
+        ("pse" in fn and any(fn.endswith(ext) for ext in spreadsheet_exts))
+        or "pse excel" in fn or "pse_excel" in fn
+        for fn in filenames_lower
+    )
+    if pse_excel_found:
+        found["PSE Excel"] = True
+
     for doc_name, keywords in core_checks:
+        # PSE Doc and PSE Excel already handled above
+        if doc_name in ("PSE Doc (Signed)", "PSE Excel"):
+            if doc_name not in found:
+                issues.append(f"Missing: {doc_name}")
+            continue
         if any(any(kw in fn for kw in keywords) for fn in filenames_lower):
             found[doc_name] = True
         else:
