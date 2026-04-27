@@ -1,10 +1,13 @@
 """
 AUSMAR PSE QA Agent — Production Flask Application
+Async review processing to avoid DigitalOcean 60s gateway timeout.
 """
 
 import os
 import json
+import uuid
 import traceback
+import threading
 from flask import Flask, request, jsonify, render_template, send_file, send_from_directory
 
 import database as db
@@ -23,29 +26,19 @@ for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.confi
 db.init_db()
 
 
-# ---- Pages ----
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-# ---- Review API ----
-@app.route("/api/review", methods=["POST"])
-def api_review():
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-    file = request.files["file"]
-    if not file.filename.endswith(".zip"):
-        return jsonify({"error": "File must be a .zip"}), 400
-
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-    file.save(filepath)
-
+def _run_review_background(pending_id, filepath, filename, corrected_folder):
+    """Background thread: runs the full QA review and updates status in DB."""
     try:
-        result = run_qa_review(filepath, file.filename, app.config["CORRECTED_FOLDER"])
+        db.update_pending_progress(pending_id, 5, "Extracting zip and checking structure...")
+
+        result = run_qa_review(
+            filepath, filename, corrected_folder,
+            progress_callback=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+        )
 
         if "error" in result and not result.get("checks"):
-            return jsonify(result), 500
+            db.fail_pending_review(pending_id, result.get("error", "Unknown error"))
+            return
 
         # Save to database
         vd = result.get("verdict_data", {})
@@ -73,14 +66,79 @@ def api_review():
             db.mark_prelog_matched(result["prelog_id"], review_id)
 
         result["review_id"] = review_id
-        return jsonify(result)
+        result_json = json.dumps(result, default=str)
+        db.complete_pending_review(pending_id, result_json, review_id)
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": f"Review failed: {str(e)}"}), 500
+        db.fail_pending_review(pending_id, f"Review failed: {str(e)}")
     finally:
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        try:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass
+
+
+# ---- Pages ----
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+# ---- Review API (async) ----
+@app.route("/api/review", methods=["POST"])
+def api_review():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    file = request.files["file"]
+    if not file.filename.endswith(".zip"):
+        return jsonify({"error": "File must be a .zip"}), 400
+
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
+    file.save(filepath)
+
+    # Create a pending review ID and return immediately
+    pending_id = str(uuid.uuid4())[:12]
+    db.create_pending_review(pending_id, file.filename)
+
+    # Launch background thread
+    t = threading.Thread(
+        target=_run_review_background,
+        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"]),
+        daemon=True,
+    )
+    t.start()
+
+    return jsonify({"review_id": pending_id, "status": "processing"}), 202
+
+
+# ---- Review Status (polling endpoint) ----
+@app.route("/api/review/<review_id>/status")
+def api_review_status(review_id):
+    pending = db.get_pending_review(review_id)
+    if not pending:
+        return jsonify({"error": "Review not found"}), 404
+
+    response = {
+        "review_id": review_id,
+        "status": pending["status"],
+        "progress": pending["progress"],
+        "progress_message": pending["progress_message"],
+    }
+
+    if pending["status"] == "completed":
+        # Return the full result
+        try:
+            result = json.loads(pending["result"]) if pending["result"] else {}
+        except (json.JSONDecodeError, TypeError):
+            result = {}
+        response["result"] = result
+        response["db_review_id"] = pending.get("review_id")
+    elif pending["status"] == "failed":
+        response["error"] = pending.get("error", "Unknown error")
+
+    return jsonify(response)
 
 
 # ---- Download corrected zip ----

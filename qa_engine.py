@@ -17,11 +17,11 @@ import shutil
 import base64
 import tempfile
 import traceback
+import gc
 from datetime import datetime
 from pathlib import Path
 
 from openai import OpenAI
-from pdf2image import convert_from_path
 from PIL import Image
 import io
 
@@ -45,6 +45,13 @@ def get_client() -> OpenAI:
         base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
         _client = OpenAI(api_key=api_key, base_url=base_url)
     return _client
+
+# Flag for pdf2image availability
+_PDF2IMAGE_AVAILABLE = True
+try:
+    from pdf2image import convert_from_path
+except ImportError:
+    _PDF2IMAGE_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
 # Official naming conventions from 1.0 PSE Document Naming
@@ -164,35 +171,85 @@ JUNK_PATTERNS = {"__macosx", ".ds_store", "thumbs.db", ".tmp", "~$"}
 # Known estates with gas bans (from Heath's reviews)
 GAS_BAN_ESTATES = ["gagalba", "aura", "banya"]
 
+# Max image dimension for base64 encoding (saves memory + API cost)
+MAX_IMAGE_DIM = 1024
+
+
 # ---------------------------------------------------------------------------
-# Image/PDF conversion utilities
+# Image/PDF conversion utilities — with graceful fallback
 # ---------------------------------------------------------------------------
-def pdf_page_to_base64(pdf_path: str, page_num: int = 0, dpi: int = 200) -> str:
-    images = convert_from_path(pdf_path, first_page=page_num + 1, last_page=page_num + 1, dpi=dpi)
-    if not images:
-        return ""
+def _resize_image(img: Image.Image, max_dim: int = MAX_IMAGE_DIM) -> Image.Image:
+    """Resize image so longest side is max_dim pixels. Returns new image."""
+    w, h = img.size
+    if w <= max_dim and h <= max_dim:
+        return img
+    if w > h:
+        new_w = max_dim
+        new_h = int(h * max_dim / w)
+    else:
+        new_h = max_dim
+        new_w = int(w * max_dim / h)
+    return img.resize((new_w, new_h), Image.LANCZOS)
+
+
+def _img_to_b64(img: Image.Image) -> str:
+    """Convert PIL Image to base64 JPEG string, resizing first."""
+    img = _resize_image(img)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
     buf = io.BytesIO()
-    images[0].save(buf, format="JPEG", quality=85)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    img.save(buf, format="JPEG", quality=75)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    buf.close()
+    return b64
 
 
-def pdf_all_pages_to_base64(pdf_path: str, dpi: int = 150, max_pages: int = 10) -> list[str]:
-    images = convert_from_path(pdf_path, dpi=dpi)
-    results = []
-    for img in images[:max_pages]:
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=80)
-        results.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
-    return results
+def pdf_page_to_base64(pdf_path: str, page_num: int = 0, dpi: int = 100) -> str:
+    """Convert a single PDF page to base64. Returns empty string on failure."""
+    if not _PDF2IMAGE_AVAILABLE:
+        return ""
+    try:
+        images = convert_from_path(pdf_path, first_page=page_num + 1, last_page=page_num + 1, dpi=dpi)
+        if not images:
+            return ""
+        b64 = _img_to_b64(images[0])
+        # Explicitly free memory
+        for img in images:
+            img.close()
+        del images
+        gc.collect()
+        return b64
+    except Exception as e:
+        print(f"[WARN] pdf_page_to_base64 failed for {pdf_path} page {page_num}: {e}")
+        return ""
+
+
+def pdf_all_pages_to_base64(pdf_path: str, dpi: int = 100, max_pages: int = 3) -> list[str]:
+    """Convert PDF pages to base64 list. Returns empty list on failure (graceful fallback)."""
+    if not _PDF2IMAGE_AVAILABLE:
+        return []
+    try:
+        images = convert_from_path(pdf_path, dpi=dpi, last_page=max_pages)
+        results = []
+        for img in images[:max_pages]:
+            results.append(_img_to_b64(img))
+            img.close()
+        del images
+        gc.collect()
+        return results
+    except Exception as e:
+        print(f"[WARN] pdf_all_pages_to_base64 failed for {pdf_path}: {e}")
+        return []
 
 
 def image_to_base64(img_path: str) -> str:
-    with Image.open(img_path) as img:
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        return base64.b64encode(buf.getvalue()).decode("utf-8")
+    """Convert image file to base64, resized to max 1024px."""
+    try:
+        with Image.open(img_path) as img:
+            return _img_to_b64(img)
+    except Exception as e:
+        print(f"[WARN] image_to_base64 failed for {img_path}: {e}")
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -486,10 +543,16 @@ def check_geosite(files: list[dict]) -> dict:
     ext = Path(geosite_path).suffix.lower()
 
     try:
+        vision_warning = None
         if ext == ".pdf":
-            pages_b64 = pdf_all_pages_to_base64(geosite_path, dpi=200, max_pages=4)
+            pages_b64 = pdf_all_pages_to_base64(geosite_path, dpi=100, max_pages=3)
+            if not pages_b64:
+                vision_warning = "PDF vision analysis skipped — poppler unavailable or PDF conversion failed"
         elif ext in (".jpg", ".jpeg", ".png"):
-            pages_b64 = [image_to_base64(geosite_path)]
+            b64 = image_to_base64(geosite_path)
+            pages_b64 = [b64] if b64 else []
+            if not pages_b64:
+                vision_warning = "Image conversion failed for GeoSite"
         else:
             return {
                 "issues": [f"GeoSite in unsupported format: {ext}"],
@@ -497,9 +560,11 @@ def check_geosite(files: list[dict]) -> dict:
             }
 
         if not pages_b64:
+            # Graceful fallback — skip vision but don't crash
             return {
-                "issues": ["Could not convert GeoSite to images for analysis"],
-                "warnings": [], "analysis": {}, "lot_dimensions": None,
+                "issues": [],
+                "warnings": [vision_warning or "Could not convert GeoSite to images — vision analysis skipped"],
+                "analysis": {}, "lot_dimensions": None,
             }
 
         # Load false-positive feedback to improve prompts
@@ -651,9 +716,11 @@ Do NOT flag issues you are uncertain about — only flag clear problems.{fp_note
         }
 
     except Exception as e:
+        traceback.print_exc()
         return {
-            "issues": [f"Error analysing GeoSite: {str(e)}"],
-            "warnings": [], "analysis": {}, "lot_dimensions": None,
+            "issues": [],
+            "warnings": [f"GeoSite vision analysis skipped due to error: {str(e)}"],
+            "analysis": {}, "lot_dimensions": None,
         }
 
 
@@ -795,10 +862,16 @@ def check_red_pen(files: list[dict], deposit_type: str) -> dict:
     ext = Path(redpen_path).suffix.lower()
 
     try:
+        vision_warning = None
         if ext == ".pdf":
-            pages_b64 = pdf_all_pages_to_base64(redpen_path, dpi=200, max_pages=10)
+            pages_b64 = pdf_all_pages_to_base64(redpen_path, dpi=100, max_pages=5)
+            if not pages_b64:
+                vision_warning = "PDF vision analysis skipped — poppler unavailable or PDF conversion failed"
         elif ext in (".jpg", ".jpeg", ".png"):
-            pages_b64 = [image_to_base64(redpen_path)]
+            b64 = image_to_base64(redpen_path)
+            pages_b64 = [b64] if b64 else []
+            if not pages_b64:
+                vision_warning = "Image conversion failed for Red Pen"
         else:
             return {
                 "issues": [f"Red Pen in unsupported format: {ext}"],
@@ -806,9 +879,11 @@ def check_red_pen(files: list[dict], deposit_type: str) -> dict:
             }
 
         if not pages_b64:
+            # Graceful fallback — skip vision but don't crash
             return {
-                "issues": ["Could not convert Red Pen to images"],
-                "warnings": [], "analysis": {},
+                "issues": [],
+                "warnings": [vision_warning or "Could not convert Red Pen to images — vision analysis skipped"],
+                "analysis": {},
             }
 
         fp_notes = _get_fp_notes("red_pen_markup")
@@ -914,9 +989,11 @@ IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems
         return {"issues": issues, "warnings": warnings, "analysis": analysis}
 
     except Exception as e:
+        traceback.print_exc()
         return {
-            "issues": [f"Error analysing Red Pen: {str(e)}"],
-            "warnings": [], "analysis": {},
+            "issues": [],
+            "warnings": [f"Red Pen vision analysis skipped due to error: {str(e)}"],
+            "analysis": {},
         }
 
 
@@ -1096,7 +1173,17 @@ def cross_check_prelog(prelog: dict, review_results: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 # Main QA Review Pipeline
 # ---------------------------------------------------------------------------
-def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
+def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
+                  progress_callback=None) -> dict:
+    """Run the full QA review. progress_callback(pct, msg) is called to report progress."""
+
+    def _progress(pct, msg):
+        if progress_callback:
+            try:
+                progress_callback(pct, msg)
+            except Exception:
+                pass
+
     results = {
         "zip_name": zip_name,
         "timestamp": datetime.now().isoformat(),
@@ -1122,6 +1209,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
 
     try:
         # === Check 1: File Structure & Naming (with auto-fix) ===
+        _progress(10, "Checking file structure and naming...")
         structure = check_file_structure(extract_dir, zip_name)
         results["checks"]["file_structure"] = {
             "issues": structure["issues"],
@@ -1138,6 +1226,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
         results["deposit_type"] = detect_deposit_type(files)
 
         # === Check 2: Document Completeness (per 1.0 PSE Document Naming) ===
+        _progress(20, "Checking document completeness...")
         completeness = check_document_completeness(files)
         results["checks"]["document_completeness"] = {
             "issues": completeness["issues"],
@@ -1147,6 +1236,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
         }
 
         # === Check 3: GeoSite Verification (Vision) ===
+        _progress(35, "Analysing GeoSite with vision AI...")
         geosite_result = check_geosite(files)
         results["checks"]["geosite_verification"] = {
             "issues": geosite_result["issues"],
@@ -1161,6 +1251,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
             results["consultant_name"] = gs_consultant
 
         # === Check 4: Plan-to-Lot Fit (CRITICAL) ===
+        _progress(55, "Verifying plan-to-lot fit...")
         fit_result = check_plan_to_lot_fit(geosite_result, files)
         results["checks"]["plan_to_lot_fit"] = {
             "issues": fit_result["issues"],
@@ -1172,6 +1263,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
         }
 
         # === Check 5: Red Pen Markup (Vision) ===
+        _progress(70, "Analysing Red Pen markups...")
         dep_type = results["deposit_type"] if results["deposit_type"] != "UNKNOWN" else "NHP"
         redpen_result = check_red_pen(files, dep_type)
         results["checks"]["red_pen_markup"] = {
@@ -1181,6 +1273,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
         }
 
         # === Check 6: PSE Excel / Known Issue Patterns ===
+        _progress(82, "Checking PSE patterns...")
         pse_result = check_pse_excel(files, gs_analysis)
         results["checks"]["pse_analysis"] = {
             "issues": pse_result["issues"],
@@ -1203,6 +1296,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
                 )
 
         # === Check pre-log match ===
+        _progress(88, "Cross-checking pre-log data...")
         prelog = db.find_prelog_by_deal_code(deal_code)
         prelog_notes = []
         if prelog:
@@ -1221,12 +1315,16 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str) -> dict:
             results["corrected_zip_filename"] = os.path.basename(corrected_path)
 
         # === Generate verdict ===
+        _progress(92, "Generating verdict and outputs...")
         verdict = generate_verdict(results)
         results["verdict_data"] = verdict
+
+        _progress(98, "Finalising...")
 
     except Exception as e:
         results["error"] = f"Review pipeline error: {str(e)}\n{traceback.format_exc()}"
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)
+        gc.collect()
 
     return results

@@ -18,8 +18,9 @@ COPY templates/ templates/
 # Create data directories
 RUN mkdir -p data uploads corrected_zips prelog_uploads logs
 
-# Expose port (Railway/Render set PORT env var)
+# Expose port (DigitalOcean sets PORT env var)
 EXPOSE 5000
 
-# Use gunicorn for production
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 2 app:app"]
+# Use gunicorn with 1 worker + 4 threads to save memory on 512MB container
+# Timeout 300s for background thread cleanup; actual requests return fast (async)
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 1 --threads 4 app:app"]

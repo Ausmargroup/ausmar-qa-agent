@@ -166,7 +166,7 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
   <div class="card" id="progCard" style="display:none">
     <h2 class="loading" id="progTitle">Analysing submission...</h2>
     <div class="prog"><div class="prog-bar"><div class="prog-fill" id="progFill"></div></div></div>
-    <div class="prog-txt" id="progTxt">Extracting zip...</div>
+    <div class="prog-txt" id="progTxt">Uploading file...</div>
   </div>
 
   <!-- Results -->
@@ -222,6 +222,7 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 const $=id=>document.getElementById(id);
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 let selFile=null;
+let pollTimer=null;
 
 // --- Navigation ---
 function showSection(id,btn){
@@ -241,22 +242,67 @@ function onFile(e){if(e.target.files[0]){selFile=e.target.files[0];showFile()}}
 function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(selFile.size/1024/1024).toFixed(1)+' MB';$('fbar').style.display='flex';$('btnGo').disabled=false}
 function clearFile(){selFile=null;$('fbar').style.display='none';$('btnGo').disabled=true;$('fileIn').value=''}
 
-// --- Progress ---
-const steps=[{p:10,t:'Extracting zip and checking structure...'},{p:25,t:'Checking document completeness...'},{p:40,t:'Analysing GeoSite with vision AI...'},{p:60,t:'Verifying plan-to-lot fit...'},{p:75,t:'Analysing Red Pen markups...'},{p:90,t:'Generating verdict and outputs...'}];
-function animProg(){let i=0;return setInterval(()=>{if(i<steps.length){$('progFill').style.width=steps[i].p+'%';$('progTxt').textContent=steps[i].t;i++}},3500)}
-
-// --- Start Review ---
+// --- Start Review (async) ---
 async function startReview(){
   if(!selFile)return;
   $('uploadCard').style.display='none';$('progCard').style.display='block';$('resultsArea').innerHTML='';
-  const iv=animProg();
+  $('progFill').style.width='5%';$('progTxt').textContent='Uploading file...';$('progTitle').textContent='Uploading submission...';$('progTitle').classList.add('loading');
+
   const fd=new FormData();fd.append('file',selFile);
   try{
     const r=await fetch('/api/review',{method:'POST',body:fd});
     const d=await r.json();
-    clearInterval(iv);$('progFill').style.width='100%';$('progTxt').textContent='Complete.';
-    setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
-  }catch(e){clearInterval(iv);$('progTitle').textContent='Failed';$('progTitle').classList.remove('loading');$('progTxt').textContent=e.message}
+
+    if(r.status===202 && d.review_id){
+      // Async mode — start polling
+      $('progFill').style.width='10%';$('progTxt').textContent='File uploaded. Processing...';$('progTitle').textContent='Analysing submission...';
+      startPolling(d.review_id);
+    } else if(d.error){
+      // Immediate error
+      showError(d.error);
+    } else {
+      // Fallback: immediate result (shouldn't happen with new backend)
+      $('progFill').style.width='100%';$('progTxt').textContent='Complete.';
+      setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
+    }
+  }catch(e){
+    showError(e.message);
+  }
+}
+
+function showError(msg){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null}
+  $('progTitle').textContent='Failed';$('progTitle').classList.remove('loading');$('progTxt').textContent=msg;
+  $('resultsArea').innerHTML=`<div class="verdict v-error"><div class="vl">Error</div><div class="vt">Upload Failed</div><div class="vr">${esc(msg)}</div></div><button class="btn btn-primary" onclick="resetReview()">Try Again</button>`;
+}
+
+// --- Polling ---
+function startPolling(reviewId){
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await fetch(`/api/review/${reviewId}/status`);
+      const d=await r.json();
+
+      if(d.status==='processing'){
+        const pct=d.progress||10;
+        $('progFill').style.width=pct+'%';
+        $('progTxt').textContent=d.progress_message||'Processing...';
+      } else if(d.status==='completed'){
+        clearInterval(pollTimer);pollTimer=null;
+        $('progFill').style.width='100%';$('progTxt').textContent='Complete.';$('progTitle').classList.remove('loading');
+        const result=d.result||{};
+        if(d.db_review_id)result.review_id=d.db_review_id;
+        setTimeout(()=>{$('progCard').style.display='none';renderResults(result)},500);
+      } else if(d.status==='failed'){
+        clearInterval(pollTimer);pollTimer=null;
+        showError(d.error||'Review failed');
+      }
+    }catch(e){
+      // Network error — keep polling, might recover
+      console.warn('Poll error:',e);
+    }
+  },3000);
 }
 
 // --- Render Results ---
@@ -389,6 +435,7 @@ function copyBlock(id){
 }
 
 function resetReview(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null}
   clearFile();$('uploadCard').style.display='block';$('progCard').style.display='none';$('resultsArea').innerHTML='';$('progFill').style.width='0%';
 }
 

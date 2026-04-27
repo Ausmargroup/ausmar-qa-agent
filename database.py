@@ -12,7 +12,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "qa_agent.db")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -81,6 +81,19 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS pending_reviews (
+            id TEXT PRIMARY KEY,
+            zip_name TEXT NOT NULL,
+            status TEXT DEFAULT 'processing',
+            progress INTEGER DEFAULT 0,
+            progress_message TEXT DEFAULT 'Starting review...',
+            result TEXT DEFAULT '',
+            error TEXT DEFAULT '',
+            review_id INTEGER,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
     """)
 
     # Seed default plans if empty
@@ -94,6 +107,67 @@ def init_db():
                 ("Narrabeen", 10.0, 25.0, 212.33, 0, 9.24),
             ],
         )
+    conn.commit()
+    conn.close()
+
+
+# --- Pending Reviews (async tracking) ---
+def create_pending_review(pending_id: str, zip_name: str):
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO pending_reviews (id, zip_name, status, progress, progress_message) VALUES (?,?,?,?,?)",
+        (pending_id, zip_name, "processing", 0, "Starting review..."),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_pending_progress(pending_id: str, progress: int, message: str):
+    conn = get_db()
+    conn.execute(
+        "UPDATE pending_reviews SET progress=?, progress_message=?, updated_at=datetime('now') WHERE id=?",
+        (progress, message, pending_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def complete_pending_review(pending_id: str, result_json: str, review_id: int):
+    conn = get_db()
+    conn.execute(
+        "UPDATE pending_reviews SET status='completed', progress=100, progress_message='Complete', result=?, review_id=?, updated_at=datetime('now') WHERE id=?",
+        (result_json, review_id, pending_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def fail_pending_review(pending_id: str, error: str):
+    conn = get_db()
+    conn.execute(
+        "UPDATE pending_reviews SET status='failed', progress_message=?, error=?, updated_at=datetime('now') WHERE id=?",
+        (error, error, pending_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_pending_review(pending_id: str):
+    conn = get_db()
+    r = conn.execute("SELECT * FROM pending_reviews WHERE id=?", (pending_id,)).fetchone()
+    conn.close()
+    if not r:
+        return None
+    return dict(r)
+
+
+def cleanup_old_pending(hours: int = 24):
+    """Remove pending reviews older than N hours."""
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM pending_reviews WHERE created_at < datetime('now', ?)",
+        (f"-{hours} hours",),
+    )
     conn.commit()
     conn.close()
 
