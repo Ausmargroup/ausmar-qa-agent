@@ -27,7 +27,24 @@ import io
 
 import database as db
 
-client = OpenAI()
+# Lazy-initialize the client so import doesn't fail if env var is missing at build time.
+# The client is created on first use, at which point the runtime env var is available.
+_client = None
+
+def get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Set it in the DigitalOcean App Platform environment variables."
+            )
+        # Respect OPENAI_BASE_URL if set (e.g. Manus proxy or custom endpoint).
+        # Default to real OpenAI if not set.
+        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        _client = OpenAI(api_key=api_key, base_url=base_url)
+    return _client
 
 # ---------------------------------------------------------------------------
 # Official naming conventions from 1.0 PSE Document Naming
@@ -182,7 +199,7 @@ def image_to_base64(img_path: str) -> str:
 # LLM helpers
 # ---------------------------------------------------------------------------
 def call_text_model(system_prompt: str, user_prompt: str, model: str = "gpt-4.1-nano") -> str:
-    resp = client.chat.completions.create(
+    resp = get_client().chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -193,7 +210,6 @@ def call_text_model(system_prompt: str, user_prompt: str, model: str = "gpt-4.1-
     )
     return resp.choices[0].message.content.strip()
 
-
 def call_vision_model(system_prompt: str, user_text: str, image_b64_list: list[str], model: str = "gpt-4.1-mini") -> str:
     content = [{"type": "text", "text": user_text}]
     for b64 in image_b64_list:
@@ -201,7 +217,7 @@ def call_vision_model(system_prompt: str, user_text: str, image_b64_list: list[s
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
         })
-    resp = client.chat.completions.create(
+    resp = get_client().chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
