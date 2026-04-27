@@ -463,41 +463,34 @@ SPREADSHEET_EXTS = {".xlsx", ".xlsm", ".xls", ".csv"}
 
 def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: dict | None) -> tuple[str | None, float]:
     """
-    Classify a file by its content. Returns (doc_type_key, confidence).
-    confidence: 1.0 = certain, 0.5 = probable, 0.0 = unknown.
+    3-tier classification:
+    1. Text content (strong, free) — works for text-based PDFs
+    2. Filename hints (medium, free) — catches scanned PDFs and images with descriptive names
+    3. Returns (None, 0.0) to trigger vision fallback for truly ambiguous files
     """
     ext = Path(file_info["name"]).suffix.lower()
     text_lower = text_content.lower() if text_content else ""
     fn_lower = file_info["name"].lower()
 
-    # --- Spreadsheet files → PSE Excel ---
+    # --- Tier 1a: Spreadsheet files → PSE Excel ---
     if ext in SPREADSHEET_EXTS:
-        # Any spreadsheet with PSE-related content or just being a spreadsheet in this context
-        # is almost certainly the PSE Excel
         if spreadsheet_info:
+            # Check sheet names — PSE Excel has characteristic sheet names
+            sheets_lower = [s.lower() for s in spreadsheet_info.get("sheets", [])]
+            pse_sheet_signals = ["pse", "nhp", "gld pse", "gld nhp", "pse-nhp", "pse cover", "nhp cover"]
+            if any(any(sig in s for sig in pse_sheet_signals) for s in sheets_lower):
+                return "pse_excel", 1.0
             sample = spreadsheet_info.get("sample_text", "").lower()
             if any(kw in sample for kw in ["pse", "provisional", "price", "estimate", "inclusions",
                                             "base price", "total", "contract"]):
                 return "pse_excel", 1.0
-        # Even without keyword match, a spreadsheet in a PSE zip is very likely the PSE Excel
+        # Any spreadsheet in a PSE submission zip is almost certainly the PSE Excel
         return "pse_excel", 0.8
 
-    # --- Image files: check if it's a drivers licence or other image doc ---
-    if ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
-        # Drivers licence is typically a photo/scan — we'll use LLM for images later
-        # For now, check filename hints as a weak signal (but content takes priority)
-        return None, 0.0  # Will be classified by LLM vision
-
-    # --- PDF files: classify by extracted text ---
-    if ext == ".pdf":
-        if not text_lower:
-            # No text extracted (scanned PDF / image-only) — needs vision classification
-            return None, 0.0
-
-        # Score each document type
+    # --- Tier 1b: PDF text-based classification ---
+    if ext == ".pdf" and text_lower:
         best_type = None
         best_score = 0
-
         for doc_type, fingerprint in CONTENT_FINGERPRINTS:
             if ext not in fingerprint["extensions"]:
                 continue
@@ -505,10 +498,66 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
             if matches >= fingerprint["min_matches"] and matches > best_score:
                 best_score = matches
                 best_type = doc_type
-
         if best_type:
             confidence = min(1.0, 0.5 + best_score * 0.15)
             return best_type, confidence
+
+    # --- Tier 2: Filename hints (for scanned PDFs and images) ---
+    # These patterns are based on real AUSMAR consultant naming conventions.
+    # Confidence is 0.75 — strong enough to use, but vision can override.
+    FILENAME_HINTS = [
+        # ITP
+        (["intention to purchase", "itp form", "itp -", "- itp"], "itp"),
+        # PSE Doc
+        (["provisional sales estimate", "pse doc", "pse -", "- pse", "pse signed"], "pse_doc"),
+        # GeoSite
+        (["geosite", "geo site", "geo plan"], "geosite"),
+        # Red Pen
+        (["red pen", "redpen", "mark up", "markup", "red mark"], "red_pen"),
+        # Pool Form
+        (["swimming pool", "pool form"], "pool_form"),
+        # Promo Ack
+        (["promo", "client acknowledgement", "client acknowledgment"], "promo_ack"),
+        # Disclosure Plan
+        (["disclosure plan", "survey plan", "plan of sub"], "disclosure_plan"),
+        # Deposit Receipt
+        (["deposit remit", "deposit receipt", "remittance", "receipt"], "deposit_receipt"),
+        # Drivers Licence
+        (["drivers licence", "driver licence", "drivers license", "driver license", "dl -", "- dl "], "drivers_licence"),
+        # POD / Building Envelope
+        (["pod", "building envelope", "envelope plan"], "pod_envelope"),
+        # Covenant Application
+        (["covenant application", "covenant form", "covenant app"], "covenant_application"),
+        # Sites with Fall
+        (["sites with fall", "fall acknowledgment", "fall ack"], "fall_ack"),
+        # Compaction Report
+        (["compaction report", "compaction"], "compaction_report"),
+        # Soil Report
+        (["soil report", "soil test", "site classification"], "soil_report"),
+        # Acoustic Report
+        (["acoustic", "noise report"], "acoustic_report"),
+        # BAL Report
+        (["bal report", "bushfire"], "bal_report"),
+        # Contour Survey
+        (["contour survey", "contour plan", "topographic"], "contour_survey"),
+        # Covenant Guidelines
+        (["design guidelines", "covenant guidelines", "covenant doc"], "covenant_guidelines"),
+        # PSE Checklist
+        (["pse checklist", "checklist"], "pse_checklist"),
+        # Discount Approval
+        (["discount approval", "discount form"], "discount_approval"),
+        # Owner Supplied
+        (["owner supplied", "owner supply"], "owner_supplied"),
+        # Modified Plan
+        (["modified plan", "plan modification"], "modified_plan"),
+    ]
+    for patterns, doc_type in FILENAME_HINTS:
+        if any(p in fn_lower for p in patterns):
+            return doc_type, 0.75
+
+    # --- Image files with no filename hint → vision ---
+    if ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
+        return None, 0.0  # Will be classified by LLM vision
 
     return None, 0.0
 
@@ -886,19 +935,27 @@ def check_geosite(file_map: dict) -> dict:
 
         fp_notes = _get_fp_notes("geosite_verification")
 
-        system_prompt = f"""You are an AUSMAR QA reviewer analysing a GeoSite document.
+        system_prompt = f"""You are an AUSMAR QA reviewer analysing a GeoSite siting document.
 
-RULES (from real review feedback):
-- A valid GeoSite MUST be generated from geosite.com.au (NOT a Site Visit Checklist or hand-drawn plan)
-- GeoSite MUST be separate from any site visit documentation or contour plans
-- House MUST be sited at scale on the lot
-- ALL setback dimensions MUST be shown (front, rear, left side, right side)
-- Text must be readable, not overlapping
-- Customer signatures required
-- If contours are overlaid on the GeoSite making it hard to read, flag this (real issue from S26TLS)
-- SCRC front setback to OMP is typically 4.5m minimum
+A VALID GeoSite from geosite.com.au looks like this:
+- Header: "Proposed siting of your new AUSMAR Home" (or similar AUSMAR siting header)
+- Bottom-left: "© GeoSite IT Pty Ltd" watermark AND/OR a "Geo Plan ID" number
+- Bottom-left: North arrow compass
+- Right panel: Customer details (Customer, Site Address, Locality, Home Design, Estate, SP Number, Date)
+- Right panel: Site stats box (Site Area, Site Coverage, Build Area, Ceiling Height)
+- Main area: House floor plan positioned inside the lot boundary (lot shown in black outline, house in pink/red outline)
+- Dimension annotations showing lot measurements and setbacks (numbers with "m" suffix)
+- Customer signature lines (usually bottom-left, may be signed or blank)
+- Consultant name and email (bottom-left area)
 
-Analyse the image(s) and report in JSON format:
+IMPORTANT CALIBRATION — only flag these as TRUE problems:
+- is_geosite_tool = false ONLY if the document is clearly NOT a GeoSite (e.g. it's a hand-drawn sketch, a site visit checklist, or a contour survey with no house positioned on it). If you can see the AUSMAR siting header OR the GeoSite IT Pty Ltd watermark OR a Geo Plan ID, set this to true.
+- house_sited_at_scale = false ONLY if there is literally no house floor plan visible on the lot. If a floor plan is positioned inside the lot boundary, set this to true.
+- setback_dimensions_shown = false ONLY if there are NO numeric dimension annotations at all. If you can see any measurements (even just 2-3 numbers with "m"), set this to true.
+- customer_signatures_present = false ONLY if the signature lines are clearly blank/empty. If there are any marks, initials, or signatures, set this to true.
+- is_combined_with_contours = true ONLY if contour lines are overlaid on top of the GeoSite making the plan hard to read.
+
+Extract data and report in JSON format:
 {{
   "is_geosite_tool": true/false,
   "is_combined_with_contours": true/false,
@@ -926,12 +983,11 @@ Analyse the image(s) and report in JSON format:
   "rear_setback_m": number or null,
   "fall_across_site_mm": number or null,
   "is_battle_axe_lot": true/false/null,
-  "concerns": ["list of concerns"],
+  "concerns": ["list of concerns — only include if genuinely problematic"],
   "notes": "additional observations"
 }}
 
-Extract ALL dimensions you can see. Be precise with numbers. If you cannot determine a value, use null.
-Do NOT flag issues you are uncertain about — only flag clear problems.{fp_notes}"""
+Be conservative: only flag something as false/problematic if you are CERTAIN it is wrong. When in doubt, assume the document is valid.{fp_notes}"""
 
         raw = call_vision_model(
             system_prompt,
@@ -1553,6 +1609,49 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         gs_consultant = gs_analysis.get("consultant_name", "")
         if gs_consultant:
             results["consultant_name"] = gs_consultant
+
+        # === Extract consultant name from PSE Doc if GeoSite didn't provide it ===
+        if not results["consultant_name"] and "pse_doc" in file_map:
+            try:
+                pse_path = file_map["pse_doc"]["full_path"]
+                # Try text extraction first (fast)
+                pse_text = extract_pdf_text(pse_path, max_pages=1)
+                if pse_text:
+                    # Look for "Salesperson" field in text
+                    for line in pse_text.splitlines():
+                        if "salesperson" in line.lower():
+                            # Extract name after "Salesperson" label
+                            parts = line.split()
+                            idx = next((i for i, p in enumerate(parts) if "salesperson" in p.lower()), -1)
+                            if idx >= 0 and idx + 1 < len(parts):
+                                name_candidate = " ".join(parts[idx+1:idx+4]).strip()
+                                if name_candidate and len(name_candidate) > 2:
+                                    results["consultant_name"] = name_candidate
+                                    break
+                if not results["consultant_name"]:
+                    # PSE is scanned — use vision to extract salesperson name from page 1
+                    pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=1)
+                    if pse_pages:
+                        raw = call_vision_model(
+                            "You are extracting data from an AUSMAR Provisional Sales Estimate document. "
+                            "Find the Salesperson field and return ONLY a JSON object: "
+                            '{"salesperson": "Full Name", "client_name": "Full Name", "job_code": "code", "site_address": "address"}. '
+                            "If a field is not visible, use null.",
+                            "Extract the salesperson name, client name, job code, and site address from this PSE document.",
+                            pse_pages,
+                        )
+                        pse_info = parse_json_from_llm(raw)
+                        if pse_info.get("salesperson"):
+                            results["consultant_name"] = pse_info["salesperson"]
+                        # Also store client name and job code if found
+                        if pse_info.get("client_name"):
+                            results["client_name"] = pse_info["client_name"]
+                        if pse_info.get("job_code") and not results.get("deal_code"):
+                            results["deal_code"] = pse_info["job_code"]
+                        if pse_info.get("site_address"):
+                            results["site_address"] = pse_info["site_address"]
+            except Exception as e:
+                print(f"[WARN] Consultant name extraction from PSE failed: {e}")
 
         # === Check 4: Plan-to-Lot Fit ===
         _progress(55, "Verifying plan-to-lot fit...")
