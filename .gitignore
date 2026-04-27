@@ -1,9 +1,12 @@
 __pycache__/
 *.pyc
+*.pyo
 .env
 data/
+*.db
 uploads/
 corrected_zips/
 prelog_uploads/
 logs/
-*.db
+*.log
+.DS_Store
