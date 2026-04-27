@@ -170,7 +170,7 @@ def extract_spreadsheet_info(file_path: str) -> dict:
         return {"type": "spreadsheet", "sheets": [], "headers": [], "sample_text": ""}
 
 
-def extract_pse_excel_totals(file_path: str) -> dict:
+def extract_pse_excel_totals(file_path: str, original_name: str = "") -> dict:
     """Extract TOTAL DEBITS, TOTAL CREDITS, and PROPOSED NEW HOME PRICE from PSE Excel.
     Also extracts the pricing period from the filename or sheet data.
     Returns dict with keys: total_debits, total_credits, proposed_price, pricing_period."""
@@ -223,18 +223,24 @@ def extract_pse_excel_totals(file_path: str) -> dict:
         print(f"[WARN] extract_pse_excel_totals failed: {e}")
 
     # Try to extract pricing period from filename
-    fname = os.path.basename(file_path).lower()
+    # Use original_name if available (before renaming), otherwise use the file path basename
+    fname = (original_name or os.path.basename(file_path)).lower()
     # Common patterns: "PSE Dec-Jan.xlsm", "PSE Feb-Mar 2026.xlsx"
     month_names = ["jan", "feb", "mar", "apr", "may", "jun",
                    "jul", "aug", "sep", "oct", "nov", "dec"]
+    # Find months by their POSITION in the filename (not iteration order)
     found_months = []
     for m in month_names:
-        if m in fname:
-            found_months.append(m)
-    if len(found_months) >= 2:
-        result["pricing_period"] = f"{found_months[0].title()}-{found_months[1].title()}"
-    elif len(found_months) == 1:
-        result["pricing_period"] = found_months[0].title()
+        pos = fname.find(m)
+        if pos >= 0:
+            found_months.append((pos, m))
+    # Sort by position in filename to preserve the actual order (e.g., Dec-Jan not Jan-Dec)
+    found_months.sort(key=lambda x: x[0])
+    month_list = [m for _, m in found_months]
+    if len(month_list) >= 2:
+        result["pricing_period"] = f"{month_list[0].title()}-{month_list[1].title()}"
+    elif len(month_list) == 1:
+        result["pricing_period"] = month_list[0].title()
 
     return result
 
@@ -695,6 +701,8 @@ def classify_all_files(files: list[dict], progress_callback=None) -> dict:
 
     # Phase 1: Text-based classification (fast, free)
     for f in files:
+        # Store original name before any renaming happens later
+        f["original_name"] = f["name"]
         ext = Path(f["name"]).suffix.lower()
         text_content = ""
         spreadsheet_info = None
@@ -1316,38 +1324,45 @@ def check_red_pen(file_map: dict, deposit_type: str) -> dict:
         system_prompt = f"""You are an AUSMAR QA reviewer analysing Red Pen Markup documents.
 This is a {deposit_desc} submission.
 
-RULES (from real review feedback — these are actual rejection reasons):
-- NHP markups MUST be in RED colour on the AUSMAR standard base plan
-- Unchanged areas in black, changed areas in RED and dimensioned
-- All changed areas MUST have dimensions (real rejection reason from S25MLS)
-- Red pen tags (e.g. 3.2.a) should match PSE section references (real issue from S26SDN)
-- Must NOT be produced on consultant's own program — must overlay AUSMAR standard plan (S26TLS rejection)
-- Per 1.0 naming, Red Pen should cover: Floor Plan, Elevations, Electrical Plan, Floor Coverings Plan, Concrete Plan
-- Customer must sign/initial the markup
-- Flag if windows are deleted from plan but not noted
-- Flag facade changes not captured in markup
+WHAT A VALID AUSMAR RED PEN MARKUP LOOKS LIKE:
+- It is a multi-page PDF with AUSMAR standard floor plans as the base
+- Changes are marked with COLORED highlights (green, yellow, blue, pink, or red circles/highlights)
+- The term "red pen" is a legacy name — modern AUSMAR markups use COLORED HIGHLIGHTS, not literal red ink
+- Numbered reference circles (e.g., 3.0, 3.2.a) mark each change area
+- Customer initials and date appear on each page (e.g., "TB LB 15/02/2026")
+- Multiple pages covering: floor plan, elevations, electrical/floor coverings, concrete/slab
+- The base plan shows AUSMAR branding, window schedules, floor area tables
+- Changes may include raked ceilings, room modifications, fixture selections
+
+CALIBRATION — BE CONSERVATIVE:
+- is_red_colour: Set TRUE if markups use ANY coloured highlights (green, yellow, blue, pink, red). Only set FALSE if there are literally NO coloured markings at all.
+- is_on_ausmar_base_plan: Set TRUE if the base plan has AUSMAR branding, standard room layouts, window schedules, or floor area tables. Only set FALSE if the plan is clearly from a different builder or hand-drawn.
+- has_dimensions_on_changes: Set TRUE if you can see ANY dimension annotations on changed areas. Only set FALSE if changes are shown but have zero dimensions.
+- customer_signed: Set TRUE if you can see ANY initials, signatures, or date markings. Only set FALSE if signature areas are clearly blank.
+- For plan_types_covered: A page showing a floor plan with electrical symbols AND floor covering notes counts as covering BOTH electrical and floor_coverings.
 
 Analyse and report in JSON:
 {{
-  "markup_colour": "red/yellow/green/pink/black/mixed/none",
+  "markup_colour": "describe the actual colours used (e.g., green/yellow/blue highlights)",
   "is_red_colour": true/false,
   "is_on_ausmar_base_plan": true/false,
   "has_dimensions_on_changes": true/false,
   "customer_signed": true/false,
   "plan_types_covered": ["list: floor_plan, elevations, electrical, floor_coverings, concrete"],
-  "missing_plan_types": ["list of required types not found"],
+  "missing_plan_types": ["list of required types not found — empty list if all covered"],
   "structural_changes_shown": true/false,
   "changes_description": "brief description of what changes are shown",
+  "reference_numbers_found": ["list of reference numbers like 3.0, 3.2.a found on the markup"],
   "tags_reference_pse_sections": true/false/null,
   "hebel_changeover_noted": true/false,
   "width_reductions_across_plan": true/false,
   "facade_changes_shown": true/false,
   "window_deletions_noted": true/false/null,
-  "concerns": [],
+  "concerns": ["only include genuinely problematic items"],
   "notes": ""
 }}
 
-IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems.{fp_notes}"""
+IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doubt, assume the markup is valid. Colored highlights (green, yellow, blue, pink) ARE valid markup colours for AUSMAR red pen documents.{fp_notes}"""
 
         raw = call_vision_model(system_prompt, "Analyse these Red Pen Markup pages.", pages_b64)
         analysis = parse_json_from_llm(raw)
@@ -1356,12 +1371,18 @@ IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems
         warnings = []
 
         if deposit_type == "NHP":
+            # Note: "is_red_colour" now means "has ANY coloured highlights" (green/yellow/blue/pink/red)
+            # Only flag if there are literally NO coloured markings
             if analysis.get("is_red_colour") is False:
                 colour = analysis.get("markup_colour", "unknown")
-                issues.append(
-                    f"Red Pen markups NOT in red (appears {colour}) — "
-                    f"must be RED for NHP per AUSMAR standard"
-                )
+                if colour and colour.lower() not in ("none", "unknown", "black"):
+                    # Has colour but model said false — likely a calibration issue, don't flag
+                    pass
+                else:
+                    issues.append(
+                        f"Red Pen markups have no coloured annotations (appears {colour}) — "
+                        f"changes should be highlighted in colour on the AUSMAR base plan"
+                    )
             if analysis.get("is_on_ausmar_base_plan") is False:
                 issues.append(
                     "Markups NOT on standard AUSMAR base plan — "
@@ -1369,19 +1390,22 @@ IMPORTANT: Only flag issues you can clearly see. Do NOT guess or assume problems
                     "(real rejection reason from S26TLS)"
                 )
             if analysis.get("has_dimensions_on_changes") is False:
-                issues.append(
-                    "Dimensions missing from changed areas on Red Pen — "
-                    "all changes must be dimensioned (real rejection reason from S25MLS)"
+                warnings.append(
+                    "Some changed areas on Red Pen may not have dimensions — "
+                    "verify all structural changes are dimensioned"
                 )
             if analysis.get("customer_signed") is False:
                 warnings.append("Red Pen may not be signed/initialled by customer")
 
             missing = analysis.get("missing_plan_types", [])
-            if missing:
-                warnings.append(
-                    f"Red Pen may be missing coverage for: {', '.join(missing)}. "
-                    f"Per 1.0 naming, should include Floor Plan, Elevations, Electrical, Floor Coverings, Concrete."
-                )
+            if missing and len(missing) > 0:
+                # Only warn if genuinely missing major sections, not minor ones
+                major_missing = [m for m in missing if m in ("floor_plan", "elevations")]
+                if major_missing:
+                    warnings.append(
+                        f"Red Pen may be missing coverage for: {', '.join(major_missing)}. "
+                        f"Per 1.0 naming, should include Floor Plan, Elevations, Electrical, Floor Coverings, Concrete."
+                    )
 
         elif deposit_type == "STC":
             if analysis.get("structural_changes_shown") is True:
@@ -1437,7 +1461,9 @@ def check_pse_excel(file_map: dict, geosite_analysis: dict, results: dict = None
 
     # === Extract totals from PSE Excel ===
     excel_path = file_map["pse_excel"]["full_path"]
-    excel_totals = extract_pse_excel_totals(excel_path)
+    # Use original filename for pricing period extraction (before renaming)
+    original_excel_name = file_map["pse_excel"].get("original_name", "")
+    excel_totals = extract_pse_excel_totals(excel_path, original_name=original_excel_name)
     analysis["excel_totals"] = excel_totals
 
     if excel_totals.get("proposed_price"):
@@ -1615,7 +1641,12 @@ DECISION FRAMEWORK (from real AUSMAR reviews):
 - NOT ACCEPTED: Critical failures (plan doesn't fit, missing critical docs, covenant breach, etc.)
 - PARKED: Missing deal code or awaiting external input
 
-NOTE: Gas cooktops are EXEMPT from covenant gas bans per Stockland ruling. Do NOT flag them.
+CRITICAL RULES:
+1. Gas cooktops are EXEMPT from covenant gas bans per Stockland ruling. Do NOT flag them.
+2. If the PSE Excel total and PSE Signed PDF total differ by more than $100, this is a CRITICAL issue — verdict MUST be NOT ACCEPTED.
+3. If the PSE price sheet period doesn't match the deposit date month, this is a CRITICAL issue — verdict MUST be NOT ACCEPTED.
+4. Any issue containing the word "CRITICAL" in the check results is a rejection-worthy issue.
+5. Red Pen markups using colored highlights (green, yellow, blue, pink) ARE valid — do NOT flag them as "not in red".
 
 ACCURACY IS CRITICAL: Do NOT flag false positives. Only flag issues you are confident about.
 Admin/naming corrections have been auto-applied. Don't mention those as issues.
@@ -1626,7 +1657,7 @@ Output valid JSON:
   "verdict_reason": "one-line reason",
   "critical_issues": ["list of rejection-worthy issues only"],
   "warnings": ["list of concerns that don't block acceptance"],
-  "heath_review_note": "Technical summary for Heath Nunn (Drafting Manager). Cover GeoSite accuracy, Red Pen quality, plan-to-lot fit, site coverage, acoustic/covenant concerns. Be specific with numbers. 2-4 paragraphs.",
+  "heath_review_note": "Technical summary for Heath Nunn (Drafting Manager). Cover GeoSite accuracy, Red Pen quality, plan-to-lot fit, site coverage, acoustic/covenant concerns. Include PSE price comparison results if available. Be specific with numbers. 2-4 paragraphs.",
   "consultant_feedback_email": "Professional email to the consultant. Start with 'Hi [consultant name],' and end with 'Regards,\\nNik'. Be specific about what needs fixing. If accepted, acknowledge good work briefly."
 }"""
 
@@ -1770,80 +1801,97 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         }
 
         gs_analysis = geosite_result.get("analysis", {})
+
+        # === Extract consultant name and key data from ITP FIRST (most reliable source) ===
+        # The ITP has a grey header bar: "PURCHASER/S DETAILS" on left, "CONSULTANT" label
+        # in the middle, and the consultant name (e.g., "TELFORD LOUEZ") on the right.
+        # The purchaser names are BELOW in the form fields — they are NOT the consultant.
+        if "itp" in file_map:
+            try:
+                itp_path = file_map["itp"]["full_path"]
+                itp_pages = pdf_all_pages_to_base64(itp_path, dpi=150, max_pages=2)
+                if itp_pages:
+                    raw = call_vision_model(
+                        "You are extracting data from an AUSMAR Intention to Purchase (ITP) form. "
+                        "CRITICAL LAYOUT INFORMATION:\n"
+                        "- There is a GREY HEADER BAR near the top of page 1.\n"
+                        "- On the LEFT side of this grey bar: 'PURCHASER/S DETAILS' label.\n"
+                        "- On the RIGHT side of this grey bar: 'CONSULTANT' label followed by the consultant's name in BOLD.\n"
+                        "- The CONSULTANT name is the AUSMAR sales person (e.g., 'TELFORD LOUEZ').\n"
+                        "- BELOW the grey bar are the purchaser form fields (First Name, Middle Name, Surname).\n"
+                        "- The purchaser names are the BUYERS, NOT the consultant.\n"
+                        "- DO NOT confuse purchaser names with the consultant name.\n\n"
+                        "Also extract from page 1: lot number, street name, estate/suburb, land price.\n"
+                        "From the deposit section: the deposit amount and date.\n"
+                        "From page 2/3 if visible: the signed date (DD/MM/YYYY or DD/MM/YY format).\n\n"
+                        "Return ONLY a JSON object:\n"
+                        '{"consultant_name": "Full Name from grey header bar", '
+                        '"purchaser_names": ["Purchaser 1 Full Name", "Purchaser 2 Full Name"], '
+                        '"lot_number": "number", "street": "street name", "estate": "estate or suburb name", '
+                        '"deposit_date": "DD/MM/YYYY as written on the form", '
+                        '"land_price": "dollar amount", '
+                        '"deposit_amount": "dollar amount"}. '
+                        "If a field is not visible, use null.",
+                        "Look at the GREY HEADER BAR at the top. The CONSULTANT name is on the RIGHT side of that bar, in bold. "
+                        "The purchaser names are in the form fields BELOW the bar. Extract all requested data.",
+                        itp_pages,
+                    )
+                    itp_info = parse_json_from_llm(raw)
+                    if itp_info.get("consultant_name"):
+                        results["consultant_name"] = itp_info["consultant_name"]
+                    if itp_info.get("purchaser_names"):
+                        results["purchaser_names"] = itp_info["purchaser_names"]
+                    if itp_info.get("deposit_date"):
+                        results["deposit_date"] = itp_info["deposit_date"]
+                    if itp_info.get("lot_number"):
+                        results["lot_number"] = itp_info["lot_number"]
+                    if itp_info.get("street"):
+                        results["street"] = itp_info["street"]
+                    if itp_info.get("estate"):
+                        results["estate"] = itp_info["estate"]
+                    if itp_info.get("land_price"):
+                        results["land_price"] = itp_info["land_price"]
+                    if itp_info.get("deposit_amount"):
+                        results["deposit_amount"] = itp_info["deposit_amount"]
+            except Exception as e:
+                print(f"[WARN] ITP data extraction failed: {e}")
+
+        # Fallback: GeoSite consultant name (only if ITP didn't provide one)
         gs_consultant = gs_analysis.get("consultant_name", "")
-        if gs_consultant:
+        if not results["consultant_name"] and gs_consultant:
             results["consultant_name"] = gs_consultant
 
-        # === Extract consultant name: ITP first (most reliable), then PSE Doc fallback ===
-        if not results["consultant_name"]:
-            # Priority 1: ITP form — has "CONSULTANT — NAME" in bold header on page 1
-            if "itp" in file_map:
-                try:
-                    itp_path = file_map["itp"]["full_path"]
-                    itp_pages = pdf_all_pages_to_base64(itp_path, dpi=100, max_pages=1)
-                    if itp_pages:
-                        raw = call_vision_model(
-                            "You are extracting data from an AUSMAR Intention to Purchase form. "
-                            "The CONSULTANT name is shown in BOLD at the top right of the form, "
-                            "next to the word CONSULTANT. It is NOT the purchaser name. "
-                            "The purchaser names are under PURCHASER/S DETAILS on the left. "
-                            "Return ONLY a JSON object: "
-                            '{"consultant_name": "Full Name", "purchaser_names": ["Name 1", "Name 2"], '
-                            '"lot_number": "number", "street": "name", "estate": "name", '
-                            '"deposit_date": "DD/MM/YY as written", "land_price": "amount"}. '
-                            "If a field is not visible, use null.",
-                            "Extract the CONSULTANT name (bold, top right), purchaser names, lot details, and deposit date.",
-                            itp_pages,
-                        )
-                        itp_info = parse_json_from_llm(raw)
-                        if itp_info.get("consultant_name"):
-                            results["consultant_name"] = itp_info["consultant_name"]
-                        if itp_info.get("purchaser_names"):
-                            results["purchaser_names"] = itp_info["purchaser_names"]
-                        if itp_info.get("deposit_date"):
-                            results["deposit_date"] = itp_info["deposit_date"]
-                        if itp_info.get("lot_number"):
-                            results["lot_number"] = itp_info["lot_number"]
-                        if itp_info.get("street"):
-                            results["street"] = itp_info["street"]
-                        if itp_info.get("estate"):
-                            results["estate"] = itp_info["estate"]
-                        if itp_info.get("land_price"):
-                            results["land_price"] = itp_info["land_price"]
-                except Exception as e:
-                    print(f"[WARN] Consultant name extraction from ITP failed: {e}")
-
-            # Priority 2: PSE Doc page 1 — has "Salesperson: Name" field
-            if not results["consultant_name"] and "pse_doc" in file_map:
-                try:
-                    pse_path = file_map["pse_doc"]["full_path"]
-                    pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=1)
-                    if pse_pages:
-                        raw = call_vision_model(
-                            "You are extracting data from an AUSMAR Provisional Sales Estimate (PSE) document. "
-                            "The Salesperson name is near the top of page 1, labelled 'Salesperson:'. "
-                            "This is the consultant/sales person who created the PSE. "
-                            "Do NOT confuse with the client/purchaser name. "
-                            "Return ONLY a JSON object: "
-                            '{"salesperson": "Full Name", "client_name": "Full Name", '
-                            '"job_code": "code", "site_address": "address", "pricing_period": "month-month year"}. '
-                            "If a field is not visible, use null.",
-                            "Extract the salesperson name, client name, job code, site address, and pricing period.",
-                            pse_pages,
-                        )
-                        pse_info = parse_json_from_llm(raw)
-                        if pse_info.get("salesperson"):
-                            results["consultant_name"] = pse_info["salesperson"]
-                        if pse_info.get("client_name"):
-                            results["client_name"] = pse_info["client_name"]
-                        if pse_info.get("job_code") and not results.get("deal_code"):
-                            results["deal_code"] = pse_info["job_code"]
-                        if pse_info.get("site_address"):
-                            results["site_address"] = pse_info["site_address"]
-                        if pse_info.get("pricing_period"):
-                            results["pricing_period"] = pse_info["pricing_period"]
-                except Exception as e:
-                    print(f"[WARN] Consultant name extraction from PSE failed: {e}")
+        # Fallback 2: PSE Doc page 1 — has "Salesperson: Name" field
+        if not results["consultant_name"] and "pse_doc" in file_map:
+            try:
+                pse_path = file_map["pse_doc"]["full_path"]
+                pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=1)
+                if pse_pages:
+                    raw = call_vision_model(
+                        "You are extracting data from an AUSMAR Provisional Sales Estimate (PSE) document. "
+                        "The Salesperson name is near the top of page 1, labelled 'Salesperson:'. "
+                        "This is the consultant/sales person who created the PSE. "
+                        "Do NOT confuse with the client/purchaser name. "
+                        "Return ONLY a JSON object: "
+                        '{"salesperson": "Full Name", "client_name": "Full Name", '
+                        '"job_code": "code", "site_address": "address", "pricing_period": "month-month year"}. '
+                        "If a field is not visible, use null.",
+                        "Extract the salesperson name, client name, job code, site address, and pricing period.",
+                        pse_pages,
+                    )
+                    pse_info = parse_json_from_llm(raw)
+                    if pse_info.get("salesperson"):
+                        results["consultant_name"] = pse_info["salesperson"]
+                    if pse_info.get("client_name"):
+                        results["client_name"] = pse_info["client_name"]
+                    if pse_info.get("job_code") and not results.get("deal_code"):
+                        results["deal_code"] = pse_info["job_code"]
+                    if pse_info.get("site_address"):
+                        results["site_address"] = pse_info["site_address"]
+                    if pse_info.get("pricing_period"):
+                        results["pricing_period"] = pse_info["pricing_period"]
+            except Exception as e:
+                print(f"[WARN] Consultant name extraction from PSE failed: {e}")
 
         # === Check 4: Plan-to-Lot Fit ===
         _progress(55, "Verifying plan-to-lot fit...")
@@ -1885,8 +1933,148 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                     f"Site fall {fall_mm}mm >= 500mm but no Sites with Fall Acknowledgment (Signed) found in submission"
                 )
 
+        # === Check 8: Red Pen to PSE Cross-Reference ===
+        _progress(85, "Cross-referencing Red Pen annotations with PSE...")
+        redpen_analysis = results["checks"].get("red_pen_markup", {}).get("analysis", {})
+        ref_numbers = redpen_analysis.get("reference_numbers_found", [])
+        if ref_numbers and "pse_doc" in file_map:
+            try:
+                pse_path = file_map["pse_doc"]["full_path"]
+                # Check a few pages of the PSE for the reference numbers
+                pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=12)
+                if pse_pages:
+                    refs_str = ", ".join(str(r) for r in ref_numbers)
+                    raw = call_vision_model(
+                        "You are checking an AUSMAR Provisional Sales Estimate (PSE) document. "
+                        "The Red Pen markup has the following reference numbers annotated: "
+                        f"{refs_str}. "
+                        "Check if the PSE document contains write-ups or sections that correspond "
+                        "to these reference numbers. PSE sections are typically numbered like "
+                        "3.0, 3.1, 3.2, 3.2.a etc. and describe structural changes, additions, or modifications.\n\n"
+                        "Return ONLY a JSON object:\n"
+                        '{"references_found_in_pse": ["list of ref numbers that have matching PSE sections"], '
+                        '"references_missing_from_pse": ["list of ref numbers NOT found in PSE"], '
+                        '"pse_sections_found": ["list of PSE section numbers found in the document"], '
+                        '"notes": "brief description"}',
+                        "Check if these Red Pen reference numbers have corresponding write-ups in the PSE document.",
+                        pse_pages[-6:] if len(pse_pages) > 6 else pse_pages,  # Check last 6 pages where sections are
+                    )
+                    xref_result = parse_json_from_llm(raw)
+                    results["checks"]["redpen_pse_crossref"] = {
+                        "issues": [],
+                        "warnings": [],
+                        "analysis": xref_result,
+                    }
+                    missing_refs = xref_result.get("references_missing_from_pse", [])
+                    if missing_refs:
+                        results["checks"]["redpen_pse_crossref"]["warnings"].append(
+                            f"Red Pen reference numbers {', '.join(str(r) for r in missing_refs)} "
+                            f"may not have corresponding write-ups in the PSE document. "
+                            f"Verify all Red Pen annotations are documented in the PSE."
+                        )
+            except Exception as e:
+                print(f"[WARN] Red Pen to PSE cross-reference failed: {e}")
+
+        # === Check 9: LHDC (Liveable Housing Design Criteria) ===
+        _progress(88, "Checking Liveable Housing Design Criteria...")
+        if "red_pen" in file_map or "geosite" in file_map:
+            try:
+                # Use Red Pen page 1 (floor plan) for LHDC analysis — it has the most detail
+                lhdc_source = file_map.get("red_pen") or file_map.get("geosite")
+                lhdc_path = lhdc_source["full_path"]
+                lhdc_pages = pdf_all_pages_to_base64(lhdc_path, dpi=150, max_pages=2)
+                if lhdc_pages:
+                    raw = call_vision_model(
+                        "You are an AUSMAR QA reviewer checking a floor plan for Liveable Housing Design Criteria (LHDC) compliance. "
+                        "LHDC is about wheelchair accessibility and liveable design for Australian homes.\n\n"
+                        "CHECK THESE SPECIFIC ITEMS:\n"
+                        "1. LAUNDRY (LDRY) WIDTH: Must be minimum 1650mm wide for LHDC. Look for the laundry room dimensions. "
+                        "If the laundry width is less than 1650mm, this is a FAIL.\n"
+                        "2. HALLWAY WIDTH near BED 3: Check if there is a linen cupboard near BED 3 that could reduce "
+                        "hallway width below 1000mm. Hallways must be minimum 1000mm for wheelchair access.\n"
+                        "3. WC (TOILET) near BED 4: Check the door type. For LHDC compliance, the WC needs a CSD "
+                        "(Concealed Sliding Door) or sliding door, not a standard hinged door, to allow wheelchair access.\n"
+                        "4. ACCESSIBLE BATHROOM: At least one bathroom or ensuite must have space for an accessible shower "
+                        "(minimum 1160mm x 1100mm clear floor space). Check if either the main bathroom or ensuite "
+                        "could accommodate this.\n\n"
+                        "Return ONLY a JSON object:\n"
+                        '{"laundry_width_mm": "estimated width in mm or null if not visible", '
+                        '"laundry_compliant": true/false/null, '
+                        '"hallway_width_near_bed3_mm": "estimated width or null", '
+                        '"hallway_compliant": true/false/null, '
+                        '"linen_cupboard_blocks_hallway": true/false/null, '
+                        '"wc_near_bed4_door_type": "hinged/sliding/csd/unknown", '
+                        '"wc_door_compliant": true/false/null, '
+                        '"accessible_shower_possible": true/false/null, '
+                        '"lhdc_concerns": ["list of specific LHDC issues found"], '
+                        '"notes": "brief overall assessment"}\n\n'
+                        "IMPORTANT: Only flag issues you can clearly see from the floor plan dimensions. "
+                        "If dimensions are not visible, note that rather than guessing.",
+                        "Analyse this floor plan for Liveable Housing Design Criteria (LHDC) compliance. "
+                        "Focus on laundry width, hallway widths, WC door types, and bathroom accessibility.",
+                        lhdc_pages[:2],  # First 2 pages (floor plan)
+                    )
+                    lhdc_result = parse_json_from_llm(raw)
+                    lhdc_issues = []
+                    lhdc_warnings = []
+
+                    # Laundry width check
+                    if lhdc_result.get("laundry_compliant") is False:
+                        width = lhdc_result.get("laundry_width_mm", "unknown")
+                        lhdc_issues.append(
+                            f"LHDC: Laundry width ({width}mm) is below the 1650mm minimum "
+                            f"required for liveable housing compliance"
+                        )
+
+                    # Hallway width check
+                    if lhdc_result.get("linen_cupboard_blocks_hallway") is True:
+                        lhdc_issues.append(
+                            "LHDC: Linen cupboard near BED 3 may reduce hallway width below "
+                            "1000mm minimum for wheelchair accessibility"
+                        )
+                    elif lhdc_result.get("hallway_compliant") is False:
+                        lhdc_issues.append(
+                            "LHDC: Hallway width near BED 3 may be below 1000mm minimum "
+                            "for wheelchair accessibility"
+                        )
+
+                    # WC door type check
+                    if lhdc_result.get("wc_door_compliant") is False:
+                        door_type = lhdc_result.get("wc_near_bed4_door_type", "unknown")
+                        lhdc_issues.append(
+                            f"LHDC: WC near BED 4 has {door_type} door — needs CSD (Concealed Sliding Door) "
+                            f"for accessible toilet compliance"
+                        )
+
+                    # Accessible shower check
+                    if lhdc_result.get("accessible_shower_possible") is False:
+                        lhdc_warnings.append(
+                            "LHDC: Neither bathroom nor ensuite appears to have space for an accessible shower "
+                            "(1160mm x 1100mm clear floor space) — whole house needs LHDC consideration"
+                        )
+
+                    # Add any additional concerns from the model
+                    extra_concerns = lhdc_result.get("lhdc_concerns", [])
+                    for concern in extra_concerns:
+                        if concern and concern not in [i for i in lhdc_issues + lhdc_warnings]:
+                            lhdc_warnings.append(f"LHDC: {concern}")
+
+                    results["checks"]["lhdc_assessment"] = {
+                        "issues": lhdc_issues,
+                        "warnings": lhdc_warnings,
+                        "analysis": lhdc_result,
+                    }
+            except Exception as e:
+                print(f"[WARN] LHDC check failed: {e}")
+
+        # === Build corrected zip ===
+        if results["corrections_applied"]:
+            corrected_path = build_corrected_zip(extract_dir, deal_code, corrected_zip_dir)
+            results["corrected_zip_path"] = corrected_path
+            results["corrected_zip_filename"] = os.path.basename(corrected_path)
+
         # === Cross-check pre-log ===
-        _progress(88, "Cross-checking pre-log data...")
+        _progress(92, "Cross-checking pre-log data...")
         prelog = db.find_prelog_by_deal_code(deal_code)
         prelog_notes = []
         if prelog:
@@ -1898,14 +2086,8 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                     "issues": [], "warnings": prelog_notes,
                 }
 
-        # === Build corrected zip ===
-        if results["corrections_applied"]:
-            corrected_path = build_corrected_zip(extract_dir, deal_code, corrected_zip_dir)
-            results["corrected_zip_path"] = corrected_path
-            results["corrected_zip_filename"] = os.path.basename(corrected_path)
-
         # === Generate verdict ===
-        _progress(92, "Generating verdict and outputs...")
+        _progress(95, "Generating verdict and outputs...")
         verdict = generate_verdict(results)
         results["verdict_data"] = verdict
 
