@@ -564,6 +564,11 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
 
     # --- Tier 1b: PDF text-based classification ---
     if ext == ".pdf" and text_lower:
+        # Priority override: PSE Checklist contains keywords for MANY doc types
+        # (it lists them all). If the filename says "checklist", trust that.
+        if "checklist" in fn_lower and "pse checklist" in text_lower:
+            return "pse_checklist", 1.0
+
         best_type = None
         best_score = 0
         for doc_type, fingerprint in CONTENT_FINGERPRINTS:
@@ -1452,6 +1457,7 @@ def check_pse_excel(file_map: dict, geosite_analysis: dict, results: dict = None
     issues = []
     warnings = []
     analysis = {}
+    print(f"[DEBUG] check_pse_excel: pse_excel found, pse_doc in file_map: {'pse_doc' in file_map}")
 
     facade_name = geosite_analysis.get("facade_name", "") or ""
     if facade_name:
@@ -1468,17 +1474,33 @@ def check_pse_excel(file_map: dict, geosite_analysis: dict, results: dict = None
 
     if excel_totals.get("proposed_price"):
         analysis["excel_proposed_price"] = excel_totals["proposed_price"]
+    print(f"[DEBUG] check_pse_excel: proposed_price={excel_totals.get('proposed_price')}, pricing_period={excel_totals.get('pricing_period')}")
 
     # === CRITICAL CHECK: Compare PSE Excel total vs PSE Signed PDF total ===
     if excel_totals.get("proposed_price") and "pse_doc" in file_map:
         try:
             pse_path = file_map["pse_doc"]["full_path"]
-            # Use vision to extract the total from the last few pages of the signed PSE
-            pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=15)
-            if pse_pages:
-                # We want the last pages where the totals are
-                # Use the last 2 pages (totals are typically on the second-to-last page)
-                pages_to_check = pse_pages[-3:] if len(pse_pages) >= 3 else pse_pages
+            # The totals (TOTAL DEBITS, TOTAL CREDITS, PROPOSED NEW HOME PRICE)
+            # are typically around page 11 of a 15-page PSE (60-80% mark).
+            # Convert page-by-page to save memory on 512MB container.
+            from pypdf import PdfReader as _PdfReader
+            try:
+                _reader = _PdfReader(pse_path)
+                total_pages = len(_reader.pages)
+            except Exception:
+                total_pages = 12  # Assume ~12 pages if we can't read
+            
+            # Target pages at 60-80% mark
+            start_page = max(0, int(total_pages * 0.6) - 1)  # 0-indexed
+            end_page = min(total_pages - 1, int(total_pages * 0.85))
+            pages_to_check = []
+            for pg in range(start_page, end_page + 1):
+                b64 = pdf_page_to_base64(pse_path, page_num=pg, dpi=100)
+                if b64:
+                    pages_to_check.append(b64)
+            
+            print(f"[DEBUG] PSE price check: total_pages={total_pages}, checking pages {start_page+1}-{end_page+1} ({len(pages_to_check)} converted)")
+            if pages_to_check:
                 raw = call_vision_model(
                     "You are extracting pricing data from an AUSMAR Provisional Sales Estimate (PSE) document. "
                     "Find the TOTAL DEBITS, TOTAL CREDITS, and PROPOSED NEW HOME PRICE values. "
@@ -1514,6 +1536,7 @@ def check_pse_excel(file_map: dict, geosite_analysis: dict, results: dict = None
     # === CRITICAL CHECK: Price sheet period vs deposit date ===
     excel_period = excel_totals.get("pricing_period") or ""
     deposit_date_str = (results or {}).get("deposit_date", "") or ""
+    print(f"[DEBUG] check_pse_excel: excel_period='{excel_period}', deposit_date_str='{deposit_date_str}'")
 
     if excel_period and deposit_date_str:
         analysis["excel_pricing_period"] = excel_period
@@ -1809,7 +1832,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         if "itp" in file_map:
             try:
                 itp_path = file_map["itp"]["full_path"]
-                itp_pages = pdf_all_pages_to_base64(itp_path, dpi=150, max_pages=2)
+                itp_pages = pdf_all_pages_to_base64(itp_path, dpi=150, max_pages=3)
                 if itp_pages:
                     raw = call_vision_model(
                         "You are extracting data from an AUSMAR Intention to Purchase (ITP) form. "
@@ -1822,8 +1845,9 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                         "- The purchaser names are the BUYERS, NOT the consultant.\n"
                         "- DO NOT confuse purchaser names with the consultant name.\n\n"
                         "Also extract from page 1: lot number, street name, estate/suburb, land price.\n"
-                        "From the deposit section: the deposit amount and date.\n"
-                        "From page 2/3 if visible: the signed date (DD/MM/YYYY or DD/MM/YY format).\n\n"
+                        "From the deposit section (page 1 or 2): the deposit amount.\n"
+                        "From the PURCHASER SIGNATURE section (usually page 3): the DATE next to the purchaser signatures.\n"
+                        "This is the deposit/signing date in DD/MM/YYYY or DD/MM/YY format (e.g., 15/02/2026).\n\n"
                         "Return ONLY a JSON object:\n"
                         '{"consultant_name": "Full Name from grey header bar", '
                         '"purchaser_names": ["Purchaser 1 Full Name", "Purchaser 2 Full Name"], '
@@ -1855,6 +1879,28 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                         results["deposit_amount"] = itp_info["deposit_amount"]
             except Exception as e:
                 print(f"[WARN] ITP data extraction failed: {e}")
+
+        # If deposit_date still not set after ITP extraction, try to extract from ITP page 3 specifically
+        if not results.get("deposit_date") and "itp" in file_map:
+            try:
+                itp_path = file_map["itp"]["full_path"]
+                # Get just page 3 at higher DPI for the signature date
+                page3 = pdf_page_to_base64(itp_path, page_num=2, dpi=150)  # 0-indexed, so page 3 = index 2
+                if page3:
+                    raw = call_vision_model(
+                        "This is the signature page of an AUSMAR ITP form. "
+                        "Find the DATE written next to the PURCHASER SIGNATURE. "
+                        "It will be in DD/MM/YYYY or DD/MM/YY format (e.g., 15/02/2026). "
+                        "Return ONLY a JSON object: {\"deposit_date\": \"DD/MM/YYYY\"}",
+                        "Extract the date from the purchaser signature section.",
+                        [page3],
+                    )
+                    date_info = parse_json_from_llm(raw)
+                    if date_info.get("deposit_date"):
+                        results["deposit_date"] = date_info["deposit_date"]
+                        print(f"[DEBUG] deposit_date extracted from ITP page 3: {results['deposit_date']}")
+            except Exception as e:
+                print(f"[WARN] deposit_date fallback extraction failed: {e}")
 
         # Fallback: GeoSite consultant name (only if ITP didn't provide one)
         gs_consultant = gs_analysis.get("consultant_name", "")
@@ -1940,9 +1986,14 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         if ref_numbers and "pse_doc" in file_map:
             try:
                 pse_path = file_map["pse_doc"]["full_path"]
-                # Check a few pages of the PSE for the reference numbers
-                pse_pages = pdf_all_pages_to_base64(pse_path, dpi=100, max_pages=12)
-                if pse_pages:
+                # Check PSE pages 4-10 for reference number write-ups (sections are in the middle)
+                # Use page-by-page to save memory
+                pse_pages_xref = []
+                for pg in range(3, 10):  # pages 4-10 (0-indexed: 3-9)
+                    b64 = pdf_page_to_base64(pse_path, page_num=pg, dpi=100)
+                    if b64:
+                        pse_pages_xref.append(b64)
+                if pse_pages_xref:
                     refs_str = ", ".join(str(r) for r in ref_numbers)
                     raw = call_vision_model(
                         "You are checking an AUSMAR Provisional Sales Estimate (PSE) document. "
@@ -1957,7 +2008,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                         '"pse_sections_found": ["list of PSE section numbers found in the document"], '
                         '"notes": "brief description"}',
                         "Check if these Red Pen reference numbers have corresponding write-ups in the PSE document.",
-                        pse_pages[-6:] if len(pse_pages) > 6 else pse_pages,  # Check last 6 pages where sections are
+                        pse_pages_xref[:5],  # Max 5 pages to keep within token limits
                     )
                     xref_result = parse_json_from_llm(raw)
                     results["checks"]["redpen_pse_crossref"] = {
