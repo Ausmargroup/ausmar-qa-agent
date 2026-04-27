@@ -18,9 +18,8 @@ COPY templates/ templates/
 # Create data directories
 RUN mkdir -p data uploads corrected_zips prelog_uploads logs
 
-# Expose port (DigitalOcean sets PORT env var)
-EXPOSE 5000
+# Expose port 8080 (Railway default for Docker deployments)
+EXPOSE 8080
 
-# Use gunicorn with 1 worker + 4 threads to save memory on 512MB container
-# Timeout 300s for background thread cleanup; actual requests return fast (async)
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --timeout 300 --workers 1 --threads 4 app:app"]
+# Use exec form (no shell) so PORT env var is never misinterpreted as a literal string
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "300", "--workers", "1", "--threads", "4", "app:app"]
