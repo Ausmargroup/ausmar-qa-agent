@@ -114,11 +114,244 @@ DOC_TYPES = {
 }
 
 # Core required documents (missing = issue)
-CORE_REQUIRED = ["pse_doc", "pse_excel", "geosite", "itp", "deposit_receipt", "drivers_licence"]
+# Per 1.0 PSE Document Naming: PSE Signed, PSE Excel, GeoSite, ITP, Deposit Receipt, Drivers Licence,
+# Red Pen Markup, Promo Ack are all required for a PSE submission.
+CORE_REQUIRED = ["pse_doc", "pse_excel", "geosite", "itp", "deposit_receipt", "drivers_licence", "red_pen", "promo_ack"]
 # Soft required (missing = warning)
 SOFT_REQUIRED = ["pse_checklist"]
 # Conditionally expected (missing = warning if not explained)
 CONDITIONAL_EXPECTED = ["disclosure_plan", "pod_envelope"]
+
+
+# ---------------------------------------------------------------------------
+# Regional Compliance Rules
+# ---------------------------------------------------------------------------
+# Per AUSMAR compliance checklists for each council/estate area.
+# Detection keywords are matched against estate name, address, or council area
+# extracted from the GeoSite plan or ITP form.
+REGIONAL_RULES = {
+    "SCRC": {
+        "name": "Sunshine Coast Regional Council",
+        "detection_keywords": [
+            "pelican waters", "bokarina", "birtinya", "sippy downs", "mountain creek",
+            "buderim", "caloundra", "kawana", "mooloolaba", "sunshine coast regional",
+            "scrc", "maroochydore", "mudjimba", "bli bli", "coolum", "peregian",
+        ],
+        "lhdc_required": False,
+        "setbacks_to": "WALL",
+        "max_site_coverage_pct": 60,
+        "front_setback_m": 3.0,
+        "garage_setback_m": 5.5,
+        "side_setback_m": 1.0,
+        "rear_setback_m": 1.5,
+        "max_build_height_m": 8.5,
+        "crossover_width_max_m": 4.8,
+        "site_fall_threshold_mm": 300,
+    },
+    "MBRC": {
+        "name": "Moreton Bay Regional Council",
+        "detection_keywords": [
+            "ridgeview", "moreton bay", "caboolture", "narangba", "burpengary",
+            "morayfield", "petrie", "strathpine", "kallangur", "mbrc",
+            "north lakes", "mango hill", "griffin", "dakabin",
+        ],
+        "lhdc_required": False,
+        "setbacks_to": "WALL",
+        "max_site_coverage_pct": 75,
+        "front_setback_m": 3.0,
+        "garage_setback_m": 5.4,
+        "side_setback_m": 0.75,
+        "rear_setback_m": 0.75,
+        "max_build_height_m": 8.5,
+        "roof_pitch_max_deg": 25,
+        "eave_depth_mm": 450,
+        "porch_min_depth_m": 1.5,
+        "max_facade_material_pct": 80,
+        "garage_setback_from_fbl_mm": 500,
+        "crossover_width_max_m": 4.8,
+        "landscaping_strip_min_mm": 500,
+        "side_fencing_return_m": 1.0,
+        "site_fall_threshold_mm": 500,
+        "fall_over_build_pad_threshold_mm": 300,
+    },
+    "NOOSA": {
+        "name": "Noosa Council",
+        "detection_keywords": [
+            "noosa", "tewantin", "cooroy", "pomona", "noosaville",
+            "sunrise beach", "peregian beach", "marcus beach",
+        ],
+        "lhdc_required": True,  # Always required regardless of frontage
+        "setbacks_to": "OMP",
+        "max_site_coverage_pct": 40,
+        "front_setback_m": 6.0,
+        "side_setback_m": 1.5,  # Up to 4.5m high
+        "rear_setback_m": 3.0,  # Up to 4.5m high
+        "max_build_height_m": 8.0,
+        "crossover_width_max_m": 6.0,
+        "site_fall_threshold_mm": 3000,
+        "fall_over_build_pad_threshold_mm": 2000,
+    },
+    "AURA_PV300": {
+        "name": "Aura (PV300 - Rivermont, larger lots)",
+        "detection_keywords": [
+            "rivermont", "aura", "baringa", "nirimba", "harmony",
+            "potential impact buffer", "emerging community",
+        ],
+        "lhdc_required": True,
+        "setbacks_to": "WALL",
+        "max_site_coverage_pct": 60,
+        "front_setback_m": 3.0,
+        "garage_setback_m": 5.4,
+        "side_setback_m": 1.05,
+        "rear_setback_m": 1.05,
+        "max_build_height_m": 9.0,
+        "roof_pitch_min_deg": 22.5,
+        "eave_return_min_m": 2.0,
+        "eave_depth_mm": 450,
+        "porch_min_depth_m": 2.0,
+        "porch_min_area_m2": 4.0,
+        "max_facade_material_pct": 60,
+        "garage_setback_from_fbl_mm": 450,
+        "ev_charging_required": True,
+        "crossover_width_max_m": 4.8,
+        "landscaping_strip_min_mm": 500,
+        "side_rear_fencing_height_m": 1.8,
+        "pos_min_area_m2": 20,
+        "pos_min_dimension_m": 4.0,
+        "site_fall_threshold_mm": 800,
+        "fall_over_build_pad_threshold_mm": 300,
+    },
+    "AURA_V300": {
+        "name": "Aura (V300 - Acacia, small lots)",
+        "detection_keywords": [
+            "acacia", "aura", "baringa", "nirimba",
+        ],
+        "lhdc_required": False,
+        "setbacks_to": "WALL",
+        "max_site_coverage_pct": 60,
+        "front_setback_m": 2.4,
+        "garage_setback_m": 5.0,
+        "side_setback_m": 0.9,
+        "rear_setback_m": 1.5,
+        "max_build_height_m": 9.0,
+        "roof_pitch_max_deg": 30,
+        "eave_return_min_m": 2.0,
+        "eave_depth_mm": 450,
+        "porch_min_depth_m": 1.5,
+        "porch_min_area_m2": 3.0,
+        "max_facade_material_pct": 80,
+        "garage_setback_from_fbl_m": 1.0,
+        "ev_charging_required": True,
+        "crossover_width_max_m": 3.0,
+        "landscaping_strip_min_mm": 500,
+        "landscaping_strip_max_m": 1.0,
+        "water_tank_litres": 3000,
+        "side_fencing_return_m": 1.0,
+        "side_rear_fencing_height_m": 1.8,
+        "pos_min_area_m2": 15,
+        "pos_min_dimension_m": 3.0,
+        "site_fall_threshold_mm": 480,
+        "fall_over_build_pad_threshold_mm": 250,
+    },
+    "GYMPIE": {
+        "name": "Gympie Regional Council",
+        "detection_keywords": [
+            "gympie", "bellagrove", "rural estate", "bal zone", "gympie regional",
+        ],
+        "lhdc_required": True,
+        "setbacks_to": "OMP",
+        "max_site_coverage_pct": 50,
+        "front_setback_m": 6.0,
+        "side_setback_m": 1.5,
+        "uf_side_setback_m": 2.0,
+        "rear_setback_gf_m": 1.5,
+        "rear_setback_ff_m": 2.0,
+        "max_build_height_m": 8.5,
+        "crossover_width_max_m": 6.0,
+        "landscaping_strip_min_m": 1.0,
+        "site_fall_threshold_mm": 2500,
+        "fall_over_build_pad_threshold_mm": 1000,
+    },
+    "KINMA": {
+        "name": "Kinma Valley",
+        "detection_keywords": [
+            "kinma valley", "kinma",
+        ],
+        "lhdc_required": False,
+        "setbacks_to": "BOTH",
+        "max_site_coverage_pct": 60,
+        "front_setback_omp_m": 2.0,
+        "front_setback_wall_m": 3.0,
+        "garage_setback_m": 5.4,
+        "side_setback_wall_m": 1.0,
+        "side_setback_omp_m": 0.45,
+        "rear_setback_wall_m": 1.0,
+        "rear_setback_omp_m": 0.45,
+        "max_build_height_m": 8.5,
+        "roof_pitch_min_deg": 20,
+        "eave_return_min_m": 1.5,
+        "eave_depth_min_mm": 450,
+        "max_facade_material_pct": 80,
+        "garage_setback_from_fbl_mm": 500,
+        "crossover_width_max_m": 5.0,
+        "side_fencing_return_m": 1.0,
+        "side_rear_fencing_height_m": 1.8,
+        "site_fall_threshold_mm": 1000,
+        "fall_over_build_pad_threshold_mm": 500,
+    },
+}
+
+
+def detect_regional_rules(estate_name: str, address: str, council: str = "") -> dict | None:
+    """Detect which regional compliance rules apply based on estate/address/council keywords.
+    Returns the matching rules dict or None if no match."""
+    search_text = f"{estate_name} {address} {council}".lower()
+    
+    # Check AURA variants first (more specific) — V300 is for small lots (Acacia)
+    if "acacia" in search_text and "aura" in search_text:
+        return REGIONAL_RULES["AURA_V300"]
+    if "rivermont" in search_text or ("aura" in search_text and "potential impact" in search_text):
+        return REGIONAL_RULES["AURA_PV300"]
+    
+    # Check each region
+    for region_key, rules in REGIONAL_RULES.items():
+        if region_key.startswith("AURA"):
+            continue  # Already handled above
+        for keyword in rules["detection_keywords"]:
+            if keyword in search_text:
+                return rules
+    
+    # Check AURA generically (if no specific variant matched)
+    if "aura" in search_text:
+        return REGIONAL_RULES["AURA_PV300"]  # Default to PV300 if just "aura"
+    
+    return None
+
+
+def should_apply_lhdc(lot_frontage_m: float | None, regional_rules: dict | None) -> tuple[bool, str]:
+    """Determine if LHDC checks should apply.
+    Returns (apply_lhdc: bool, reason: str).
+    
+    Rules:
+    - Frontage <= 12.5m: EXEMPT from LHDC regardless of council
+    - NOOSA, GYMPIE, AURA PV300: Always require LHDC (even if frontage > 12.5m)
+    - Other councils: LHDC not required
+    """
+    # Frontage exemption — 12.5m or less is always exempt
+    if lot_frontage_m is not None and lot_frontage_m <= 12.5:
+        return False, f"Lot frontage {lot_frontage_m}m is ≤12.5m — LHDC exempt"
+    
+    if regional_rules is None:
+        # No regional rules detected — apply LHDC conservatively
+        if lot_frontage_m is not None and lot_frontage_m > 12.5:
+            return True, f"Lot frontage {lot_frontage_m}m is >12.5m — LHDC may apply"
+        # Frontage unknown — apply LHDC conservatively (better to check than miss)
+        return True, "Lot frontage unknown — applying LHDC check conservatively (verify frontage)"
+    
+    if regional_rules.get("lhdc_required") is True:
+        return True, f"LHDC required per {regional_rules['name']} requirements"
+    
+    return False, f"LHDC not required per {regional_rules['name']} requirements"
 
 
 # ---------------------------------------------------------------------------
@@ -894,17 +1127,11 @@ def check_document_completeness(file_map: dict, unclassified: list) -> dict:
         else:
             warnings.append(f"Missing: {canonical} — should be included per 1.0 PSE Document Naming")
 
-    # Red Pen — special: required for NHP, optional for STC
-    if "red_pen" in file_map:
-        found["Red Pen Markup (Signed)"] = file_map["red_pen"]["name"]
-    else:
-        warnings.append("Missing: Red Pen Markup — required for NHP submissions, verify if needed for STC")
-
     # Conditional documents — note which are present
     conditional_keys = [
         "pod_envelope", "compaction_report", "covenant_guidelines", "disclosure_plan",
         "covenant_application", "pool_form", "discount_approval", "owner_supplied",
-        "modified_plan", "promo_ack", "fall_ack", "acoustic_report", "bal_report",
+        "modified_plan", "fall_ack", "acoustic_report", "bal_report",
         "contour_survey", "sales_accept", "soil_report", "covenant_doc",
     ]
     for doc_key in conditional_keys:
@@ -1104,31 +1331,44 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         if analysis.get("customer_signatures_present") is False:
             warnings.append("Customer signature(s) may be missing from GeoSite — required per 1.0 naming")
 
+        # Detect regional rules for setback/coverage checks
+        estate_for_check = analysis.get("estate_name") or ""
+        addr_for_check = analysis.get("street_address") or ""
+        reg_rules = detect_regional_rules(estate_for_check, addr_for_check)
+        
         front_sb = analysis.get("front_setback_m")
         if front_sb is not None and isinstance(front_sb, (int, float)):
-            if front_sb < 4.5:
+            min_front = (reg_rules or {}).get("front_setback_m", 3.0)
+            if front_sb < min_front:
                 warnings.append(
-                    f"Front setback is {front_sb}m — SCRC minimum is typically 4.5m to OMP. "
-                    f"Verify with council requirements."
+                    f"Front setback is {front_sb}m — minimum is {min_front}m "
+                    f"({'per ' + reg_rules['name'] if reg_rules else 'verify with council'}). "
+                    f"Verify against council requirements."
                 )
 
         for side_key, side_label in [("side_setback_left_m", "Left"), ("side_setback_right_m", "Right")]:
             val = analysis.get(side_key)
             if val is not None and isinstance(val, (int, float)):
-                if val < 0.6:
+                min_side = (reg_rules or {}).get("side_setback_m", 0.75)
+                if val < min_side:
                     issues.append(
-                        f"RED FLAG: {side_label} side setback is {val}m (under 0.6m) — "
-                        f"plan may be too wide for this lot"
+                        f"RED FLAG: {side_label} side setback is {val}m — minimum is {min_side}m "
+                        f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'}). "
+                        f"Plan may be too wide for this lot."
                     )
 
         coverage = analysis.get("site_coverage_percent")
         if coverage is not None and isinstance(coverage, (int, float)):
-            if coverage > 60:
-                issues.append(f"Site coverage {coverage}% exceeds 60% maximum")
-            elif coverage > 58:
+            max_cov = (reg_rules or {}).get("max_site_coverage_pct", 60)
+            if coverage > max_cov:
+                issues.append(
+                    f"Site coverage {coverage}% exceeds {max_cov}% maximum "
+                    f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'})"
+                )
+            elif coverage > max_cov - 2:
                 warnings.append(
-                    f"Site coverage {coverage}% is very close to 60% maximum — zero margin. "
-                    f"Verify with covenant (real issue from S26JYTC review)."
+                    f"Site coverage {coverage}% is very close to {max_cov}% maximum — zero margin. "
+                    f"Verify with covenant."
                 )
 
         if analysis.get("is_battle_axe_lot") is True:
@@ -2027,8 +2267,40 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                 print(f"[WARN] Red Pen to PSE cross-reference failed: {e}")
 
         # === Check 9: LHDC (Liveable Housing Design Criteria) ===
+        # Determine if LHDC applies based on frontage and regional rules
         _progress(88, "Checking Liveable Housing Design Criteria...")
-        if "red_pen" in file_map or "geosite" in file_map:
+        lot_frontage = None
+        # Try multiple sources for lot frontage
+        lot_dims = geosite_result.get("lot_dimensions") or {}
+        if lot_dims.get("width"):
+            try:
+                lot_frontage = float(lot_dims["width"])
+            except (TypeError, ValueError):
+                pass
+        # Also try the GeoSite analysis dict directly
+        if lot_frontage is None:
+            for key in ("lot_width_m", "frontage_m", "lot_frontage_m"):
+                val = gs_analysis.get(key)
+                if val is not None:
+                    try:
+                        lot_frontage = float(val)
+                        break
+                    except (TypeError, ValueError):
+                        pass
+        print(f"[DEBUG] lot_frontage for LHDC: {lot_frontage}m")
+        
+        # Detect regional rules from estate/address
+        estate_name = results.get("estate") or gs_analysis.get("estate_name") or ""
+        street_addr = results.get("street") or gs_analysis.get("street_address") or ""
+        regional_rules = detect_regional_rules(estate_name, street_addr)
+        results["regional_rules"] = regional_rules["name"] if regional_rules else "Unknown (no council match)"
+        
+        apply_lhdc, lhdc_reason = should_apply_lhdc(lot_frontage, regional_rules)
+        results["lhdc_applicable"] = apply_lhdc
+        results["lhdc_reason"] = lhdc_reason
+        print(f"[DEBUG] LHDC applicable: {apply_lhdc} — {lhdc_reason}")
+        
+        if apply_lhdc and ("red_pen" in file_map or "geosite" in file_map):
             try:
                 # Use Red Pen page 1 (floor plan) for LHDC analysis — it has the most detail
                 lhdc_source = file_map.get("red_pen") or file_map.get("geosite")
@@ -2104,19 +2376,39 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                             "(1160mm x 1100mm clear floor space) — whole house needs LHDC consideration"
                         )
 
-                    # Add any additional concerns from the model
+                    # Add any additional concerns from the model (skip duplicates)
                     extra_concerns = lhdc_result.get("lhdc_concerns", [])
+                    all_existing = " ".join(lhdc_issues + lhdc_warnings).lower()
                     for concern in extra_concerns:
-                        if concern and concern not in [i for i in lhdc_issues + lhdc_warnings]:
+                        if not concern:
+                            continue
+                        # Skip if the key topic is already covered
+                        concern_lower = concern.lower()
+                        # Extract key words to check for overlap
+                        skip = False
+                        for keyword in ["laundry", "hallway", "linen", "wc", "toilet", "shower", "bathroom", "ensuite"]:
+                            if keyword in concern_lower and keyword in all_existing:
+                                skip = True
+                                break
+                        if not skip:
                             lhdc_warnings.append(f"LHDC: {concern}")
 
                     results["checks"]["lhdc_assessment"] = {
                         "issues": lhdc_issues,
                         "warnings": lhdc_warnings,
                         "analysis": lhdc_result,
+                        "lhdc_reason": lhdc_reason,
                     }
             except Exception as e:
                 print(f"[WARN] LHDC check failed: {e}")
+        else:
+            # LHDC not applicable — record the reason
+            results["checks"]["lhdc_assessment"] = {
+                "issues": [],
+                "warnings": [],
+                "analysis": {"skipped": True, "reason": lhdc_reason},
+                "lhdc_reason": lhdc_reason,
+            }
 
         # === Build corrected zip ===
         if results["corrections_applied"]:
