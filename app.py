@@ -15,9 +15,14 @@ from qa_engine import run_qa_review
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
-app.config["UPLOAD_FOLDER"] = os.path.join(os.path.dirname(__file__), "uploads")
-app.config["CORRECTED_FOLDER"] = os.path.join(os.path.dirname(__file__), "corrected_zips")
-app.config["PRELOG_FOLDER"] = os.path.join(os.path.dirname(__file__), "prelog_uploads")
+
+# Persistent data dir. On Railway a Volume is mounted at /data and the
+# AUSMAR_DATA_DIR env var points here, so SQLite + corrected_zips + prelog_uploads
+# survive container restarts and redeploys. Falls back to ./data for local dev.
+_DATA_DIR = os.environ.get("AUSMAR_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+app.config["UPLOAD_FOLDER"] = os.path.join(_DATA_DIR, "uploads")
+app.config["CORRECTED_FOLDER"] = os.path.join(_DATA_DIR, "corrected_zips")
+app.config["PRELOG_FOLDER"] = os.path.join(_DATA_DIR, "prelog_uploads")
 
 for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"]]:
     os.makedirs(d, exist_ok=True)
