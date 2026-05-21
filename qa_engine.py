@@ -1462,11 +1462,13 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
 
     if not matched_plan:
         note = (
-            f"Plan '{home_design}' not in known plans database"
+            f"Plan '{home_design}' is not in the current AUSMAR plan library "
+            f"(Designer, Boutique, Acreage collections). This is likely a discontinued "
+            f"or legacy plan — manual plan-to-lot fit check required by Heath."
             if home_design
-            else "Could not identify plan from GeoSite"
+            else "Could not identify plan name from GeoSite — manual plan-to-lot fit check required by Heath"
         )
-        warnings.append(f"{note} — manual plan-to-lot fit check required by Heath")
+        warnings.append(note)
         return {
             "issues": issues, "warnings": warnings,
             "plan_identified": home_design, "fit_result": "MANUAL CHECK REQUIRED",
