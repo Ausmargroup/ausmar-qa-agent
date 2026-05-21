@@ -98,6 +98,15 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS access_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            consultant_name TEXT NOT NULL,
+            email TEXT DEFAULT '',
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
 
     # Seed default plans if empty
@@ -380,7 +389,6 @@ def mark_prelog_matched(prelog_id, review_id):
 def get_review_stats():
     conn = get_db()
     total = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-    # Two-state model: ACCEPTED (any verdict without NOT ACCEPTED) vs NOT ACCEPTED
     not_accepted = conn.execute("SELECT COUNT(*) FROM reviews WHERE verdict LIKE '%NOT ACCEPTED%'").fetchone()[0]
     accepted = total - not_accepted
     conn.close()
@@ -389,3 +397,117 @@ def get_review_stats():
         "accepted": accepted,
         "not_accepted": not_accepted,
     }
+
+
+# --- Access Codes ---
+def get_all_access_codes():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM access_codes ORDER BY consultant_name").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_access_code(code: str):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM access_codes WHERE code=? AND active=1", (code.upper(),)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def create_access_code(consultant_name: str, email: str = "") -> str:
+    import random, string
+    code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    conn = get_db()
+    # Ensure uniqueness
+    while conn.execute("SELECT 1 FROM access_codes WHERE code=?", (code,)).fetchone():
+        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    conn.execute(
+        "INSERT INTO access_codes (code, consultant_name, email) VALUES (?,?,?)",
+        (code, consultant_name, email),
+    )
+    conn.commit()
+    conn.close()
+    return code
+
+
+def deactivate_access_code(code_id: int):
+    conn = get_db()
+    conn.execute("UPDATE access_codes SET active=0 WHERE id=?", (code_id,))
+    conn.commit()
+    conn.close()
+
+
+# --- Per-Staff Reports ---
+def get_staff_report():
+    """Returns per-consultant stats: total, accepted, not_accepted, nhp, stc, accept_rate."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            consultant_name,
+            COUNT(*) AS total,
+            SUM(CASE WHEN verdict NOT LIKE '%NOT ACCEPTED%' THEN 1 ELSE 0 END) AS accepted,
+            SUM(CASE WHEN verdict LIKE '%NOT ACCEPTED%' THEN 1 ELSE 0 END) AS not_accepted,
+            SUM(CASE WHEN deposit_type='NHP' THEN 1 ELSE 0 END) AS nhp,
+            SUM(CASE WHEN deposit_type='STC' THEN 1 ELSE 0 END) AS stc
+        FROM reviews
+        WHERE consultant_name IS NOT NULL AND consultant_name != ''
+        GROUP BY consultant_name
+        ORDER BY total DESC
+    """).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["accept_rate"] = round(d["accepted"] / d["total"] * 100, 1) if d["total"] else 0
+        result.append(d)
+    return result
+
+
+def get_weekly_trend(weeks: int = 8):
+    """Returns weekly submission counts for the last N weeks."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            strftime('%Y-W%W', created_at) AS week,
+            COUNT(*) AS total,
+            SUM(CASE WHEN verdict NOT LIKE '%NOT ACCEPTED%' THEN 1 ELSE 0 END) AS accepted,
+            SUM(CASE WHEN verdict LIKE '%NOT ACCEPTED%' THEN 1 ELSE 0 END) AS not_accepted
+        FROM reviews
+        WHERE created_at >= datetime('now', '-' || ? || ' months')
+        GROUP BY week
+        ORDER BY week DESC
+        LIMIT ?
+    """, (weeks * 2, weeks)).fetchall()
+    conn.close()
+    return [dict(r) for r in reversed(rows)]
+
+
+def get_top_issues(limit: int = 10):
+    """Returns the most common critical issues across all reviews."""
+    conn = get_db()
+    rows = conn.execute("SELECT critical_issues FROM reviews WHERE critical_issues IS NOT NULL AND critical_issues != '[]'").fetchall()
+    conn.close()
+    from collections import Counter
+    counts = Counter()
+    for r in rows:
+        try:
+            issues = json.loads(r["critical_issues"])
+            for iss in issues:
+                # Truncate to first 80 chars to group similar issues
+                key = str(iss)[:80]
+                counts[key] += 1
+        except Exception:
+            pass
+    return [{"issue": k, "count": v} for k, v in counts.most_common(limit)]
+
+
+def get_reviews_for_csv():
+    """Returns all reviews as flat dicts for CSV export."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, deal_code, zip_name, deposit_type, verdict, verdict_reason,
+               consultant_name, heath_note, created_at
+        FROM reviews ORDER BY created_at DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

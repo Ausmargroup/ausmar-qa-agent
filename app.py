@@ -31,7 +31,7 @@ for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.confi
 db.init_db()
 
 
-def _run_review_background(pending_id, filepath, filename, corrected_folder):
+def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email=""):
     """Background thread: runs the full QA review and updates status in DB."""
     try:
         db.update_pending_progress(pending_id, 5, "Extracting zip and checking structure...")
@@ -61,7 +61,7 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder):
             "files_in_zip": result.get("checks", {}).get("file_structure", {}).get("files", []),
             "corrections_applied": result.get("corrections_applied", []),
             "corrected_zip_path": result.get("corrected_zip_path", ""),
-            "consultant_name": result.get("consultant_name", ""),
+            "consultant_name": consultant_name or result.get("consultant_name", ""),
             "prelog_id": result.get("prelog_id"),
         }
         review_id = db.save_review(review_data)
@@ -103,6 +103,10 @@ def api_review():
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
     file.save(filepath)
 
+    # Consultant identity from access code (sent as form fields)
+    consultant_name = request.form.get("consultant_name", "").strip()
+    consultant_email = request.form.get("consultant_email", "").strip()
+
     # Create a pending review ID and return immediately
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, file.filename)
@@ -110,7 +114,7 @@ def api_review():
     # Launch background thread
     t = threading.Thread(
         target=_run_review_background,
-        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"]),
+        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email),
         daemon=True,
     )
     t.start()
@@ -231,6 +235,78 @@ def api_add_plan():
 def api_delete_plan(plan_id):
     db.delete_plan(plan_id)
     return jsonify({"status": "ok"})
+
+
+# ---- Access Codes ----
+@app.route("/api/access-codes")
+def api_access_codes():
+    return jsonify(db.get_all_access_codes())
+
+
+@app.route("/api/access-codes", methods=["POST"])
+def api_create_access_code():
+    data = request.json or {}
+    name = data.get("consultant_name", "").strip()
+    if not name:
+        return jsonify({"error": "consultant_name required"}), 400
+    code = db.create_access_code(name, data.get("email", ""))
+    return jsonify({"status": "ok", "code": code})
+
+
+@app.route("/api/access-codes/<int:code_id>", methods=["DELETE"])
+def api_deactivate_access_code(code_id):
+    db.deactivate_access_code(code_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/access-codes/validate", methods=["POST"])
+def api_validate_access_code():
+    data = request.json or {}
+    code = data.get("code", "").strip().upper()
+    if not code:
+        return jsonify({"valid": False, "error": "code required"}), 400
+    record = db.get_access_code(code)
+    if record:
+        return jsonify({"valid": True, "consultant_name": record["consultant_name"], "email": record["email"]})
+    return jsonify({"valid": False, "error": "Invalid or inactive access code"}), 401
+
+
+# ---- Reports ----
+@app.route("/api/reports/staff")
+def api_staff_report():
+    return jsonify(db.get_staff_report())
+
+
+@app.route("/api/reports/weekly")
+def api_weekly_trend():
+    weeks = int(request.args.get("weeks", 8))
+    return jsonify(db.get_weekly_trend(weeks))
+
+
+@app.route("/api/reports/top-issues")
+def api_top_issues():
+    limit = int(request.args.get("limit", 10))
+    return jsonify(db.get_top_issues(limit))
+
+
+@app.route("/api/reports/export-csv")
+def api_export_csv():
+    import csv, io
+    rows = db.get_reviews_for_csv()
+    output = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        output.write("No data")
+    output.seek(0)
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=ausmar_qa_reviews.csv"}
+    )
 
 
 # ---- Pre-logs ----

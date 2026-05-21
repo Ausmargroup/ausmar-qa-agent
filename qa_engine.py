@@ -780,6 +780,26 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     text_lower = text_content.lower() if text_content else ""
     fn_lower = file_info["name"].lower()
 
+    # --- Tier 0: .docx files — extract text via python-docx if available ---
+    if ext == ".docx":
+        try:
+            import docx as _docx
+            doc = _docx.Document(file_info["full_path"])
+            text_lower = " ".join(p.text for p in doc.paragraphs).lower()
+        except Exception:
+            text_lower = ""
+        # Run filename hints first for .docx
+        for patterns, doc_type in [
+            (["intention to purchase", "itp"], "itp"),
+            (["provisional sales estimate", "pse"], "pse_doc"),
+            (["disclosure plan", "survey plan"], "disclosure_plan"),
+            (["promo", "acknowledgement", "acknowledgment"], "promo_ack"),
+            (["red pen", "markup", "mark up"], "red_pen"),
+        ]:
+            if any(p in fn_lower for p in patterns):
+                return doc_type, 0.75
+        # Fall through to text-based classification below with extracted text
+
     # --- Tier 1a: Spreadsheet files → PSE Excel ---
     if ext in SPREADSHEET_EXTS:
         if spreadsheet_info:
@@ -957,6 +977,13 @@ def classify_all_files(files: list[dict], progress_callback=None) -> dict:
         elif ext in SPREADSHEET_EXTS:
             spreadsheet_info = extract_spreadsheet_info(f["full_path"])
             text_content = spreadsheet_info.get("sample_text", "") if spreadsheet_info else ""
+        elif ext == ".docx":
+            try:
+                import docx as _docx
+                _doc = _docx.Document(f["full_path"])
+                text_content = " ".join(p.text for p in _doc.paragraphs)
+            except Exception:
+                text_content = ""
 
         doc_type, confidence = classify_by_content(f, text_content, spreadsheet_info)
 
@@ -995,7 +1022,7 @@ def classify_all_files(files: list[dict], progress_callback=None) -> dict:
     still_unclassified = []
     for f in unclassified:
         ext = Path(f["name"]).suffix.lower()
-        if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
+        if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".docx"):
             still_unclassified.append(f)
             continue
 
@@ -1317,9 +1344,11 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         warnings = []
 
         if analysis.get("is_geosite_tool") is False:
-            issues.append(
-                "CRITICAL: Document does not appear to be from geosite.com.au — "
-                "may be a Site Visit Checklist or hand-drawn plan. Must use geosite.com.au tool."
+            # Only a hard block if we're certain — demoted to warning since LLM often
+            # misreads signed/scanned GeoSites as non-GeoSite (4/6 FPs were this)
+            warnings.append(
+                "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
+                "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
             )
         if analysis.get("is_combined_with_contours") is True:
             warnings.append(
@@ -1398,8 +1427,13 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
                     f"retaining wall engineering, and council application"
                 )
 
+        # Home Design field: only warn if we couldn't extract it AND the plan name wasn't
+        # found elsewhere — this was a FP when the LLM couldn't read small text
         if not analysis.get("home_design"):
-            warnings.append("Home Design field not completed on GeoSite")
+            warnings.append(
+                "Home Design field not visible on GeoSite — verify plan name is filled in. "
+                "If it is filled in, the text may be too small for automated reading."
+            )
 
         lot_dims = {
             "width": analysis.get("lot_width_m"),
@@ -1676,10 +1710,13 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
                 "Width reductions across entire plan — possible force-fit to lot. "
                 "Verify plan-to-lot fit carefully."
             )
-        if analysis.get("tags_reference_pse_sections") is False:
+        # Only warn about tag/PSE section mismatch if the model actually found reference numbers
+        # on the markup — if no ref numbers found, this check is meaningless
+        ref_nums = analysis.get("reference_numbers_found", [])
+        if analysis.get("tags_reference_pse_sections") is False and ref_nums:
             warnings.append(
-                "Red pen tags don't appear to match PSE section references "
-                "(real issue from S26SDN — tags like 3.2.a should match PSE sections)"
+                "Red pen reference numbers found but may not match PSE section write-ups "
+                "(e.g. tags like 3.2.a should have corresponding PSE sections) — verify with Heath"
             )
 
         return {"issues": issues, "warnings": warnings, "analysis": analysis}

@@ -14,13 +14,14 @@ a{color:var(--blu);text-decoration:none}
 /* Header */
 .hdr{background:var(--p);color:#fff;padding:0.8rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .hdr h1{font-size:1.2rem;font-weight:700}.hdr .sub{font-size:0.75rem;opacity:0.7}
-.hdr nav{display:flex;gap:0.5rem}
+.hdr nav{display:flex;gap:0.5rem;flex-wrap:wrap}
 .hdr nav button{background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:0.35rem 0.75rem;border-radius:4px;cursor:pointer;font-size:0.8rem;transition:0.15s}
 .hdr nav button:hover{background:rgba(255,255,255,0.25)}
 .hdr nav button.active{background:rgba(255,255,255,0.3);font-weight:600}
+.hdr .user-pill{font-size:0.75rem;background:rgba(255,255,255,0.15);padding:0.25rem 0.6rem;border-radius:99px;margin-left:0.5rem}
 
 /* Layout */
-.wrap{max-width:1000px;margin:1.5rem auto;padding:0 1rem}
+.wrap{max-width:1100px;margin:1.5rem auto;padding:0 1rem}
 .section{display:none}.section.active{display:block}
 
 /* Cards */
@@ -42,6 +43,15 @@ textarea{resize:vertical;min-height:60px}
 label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bottom:0.2rem}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem}
 .form-row.full{grid-template-columns:1fr}
+.form-row.three{grid-template-columns:1fr 1fr 1fr}
+
+/* Access Code Gate */
+.gate{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--g50)}
+.gate-box{background:#fff;border-radius:12px;padding:2.5rem;width:92%;max-width:420px;box-shadow:0 4px 20px rgba(0,0,0,0.1);text-align:center}
+.gate-box h2{font-size:1.3rem;color:var(--p);margin-bottom:0.5rem}
+.gate-box p{color:var(--g500);font-size:0.85rem;margin-bottom:1.5rem}
+.gate-box input{text-align:center;font-size:1.2rem;letter-spacing:0.15em;font-weight:700;margin-bottom:1rem}
+.gate-err{color:var(--acc);font-size:0.8rem;margin-top:0.5rem}
 
 /* Upload zone */
 .upzone{border:2px dashed var(--g300);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;transition:0.2s}
@@ -72,7 +82,7 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 /* Badges */
 .badge{font-size:0.65rem;padding:0.1rem 0.45rem;border-radius:99px;font-weight:700;display:inline-block;vertical-align:middle}
 .b-pass{background:#c6f6d5;color:#276749}.b-warn{background:#fefcbf;color:#975a16}.b-fail{background:#fed7d7;color:#9b2c2c}
-.b-info{background:#bee3f8;color:#2a4365}
+.b-info{background:#bee3f8;color:#2a4365}.b-purple{background:#e9d8fd;color:#553c9a}
 
 /* Issue list */
 .ilist{list-style:none;padding:0}.ilist li{padding:0.35rem 0 0.35rem 1rem;position:relative;font-size:0.85rem;border-bottom:1px solid var(--g100)}
@@ -105,6 +115,20 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 .stat{background:#fff;border-radius:8px;padding:1rem;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
 .stat .num{font-size:1.8rem;font-weight:700;color:var(--p)}.stat .lbl{font-size:0.75rem;color:var(--g500)}
 
+/* Report grid */
+.rpt-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:700px){.rpt-grid{grid-template-columns:1fr}}
+
+/* Bar chart */
+.bar-row{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;font-size:0.8rem}
+.bar-label{width:140px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--g600)}
+.bar-track{flex:1;background:var(--g200);border-radius:99px;height:14px;overflow:hidden}
+.bar-fill{height:100%;border-radius:99px;transition:width 0.6s}
+.bar-val{width:50px;text-align:right;font-weight:600;color:var(--g700)}
+
+/* Accept rate colour */
+.rate-high{color:var(--grn)}.rate-mid{color:var(--ylw)}.rate-low{color:var(--acc)}
+
 /* Meta pills */
 .meta{display:flex;gap:0.75rem;flex-wrap:wrap;font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem}
 .meta span{background:var(--g100);padding:0.15rem 0.5rem;border-radius:3px}
@@ -125,28 +149,51 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 .modal .close{position:absolute;top:0.8rem;right:1rem;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--g400)}
 .modal h2{font-size:1.05rem;margin-bottom:0.75rem}
 
+/* Heath dashboard */
+.heath-flag{background:#fff5f5;border-left:3px solid var(--acc);padding:0.5rem 0.75rem;margin-bottom:0.4rem;border-radius:0 4px 4px 0;font-size:0.82rem}
+.heath-warn{background:#fffff0;border-left:3px solid var(--ylw);padding:0.5rem 0.75rem;margin-bottom:0.4rem;border-radius:0 4px 4px 0;font-size:0.82rem}
+
 /* Responsive */
 @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.hdr nav{flex-wrap:wrap}}
 </style>
 </head>
 <body>
 
+<!-- ============ ACCESS CODE GATE ============ -->
+<div class="gate" id="gateScreen">
+  <div class="gate-box">
+    <div style="font-size:2.5rem;margin-bottom:0.75rem">🏠</div>
+    <h2>AUSMAR PSE QA Agent</h2>
+    <p>Enter your access code to continue. Contact your manager if you don't have one.</p>
+    <input type="text" id="gateCode" placeholder="XXXXXX" maxlength="8" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')validateGate()">
+    <button class="btn btn-primary" style="width:100%" onclick="validateGate()">Enter</button>
+    <div class="gate-err" id="gateErr"></div>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div id="mainApp" style="display:none">
+
 <div class="hdr">
   <div><h1>AUSMAR PSE QA Agent</h1><div class="sub">Deposit Submission Review</div></div>
-  <nav>
-    <button class="active" onclick="showSection('sec-review',this)">New Review</button>
-    <button onclick="showSection('sec-history',this);loadHistory()">History</button>
-    <button onclick="showSection('sec-prelog',this);loadPrelogs()">Pre-Log</button>
-    <button onclick="showSection('sec-plans',this);loadPlans()">Plans</button>
-  </nav>
+  <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+    <nav>
+      <button class="active" onclick="showSection('sec-review',this)">New Review</button>
+      <button onclick="showSection('sec-history',this);loadHistory()">History</button>
+      <button onclick="showSection('sec-reports',this);loadReports()">Reports</button>
+      <button onclick="showSection('sec-heath',this);loadHeath()">Heath Dashboard</button>
+      <button onclick="showSection('sec-prelog',this);loadPrelogs()">Pre-Log</button>
+      <button onclick="showSection('sec-plans',this);loadPlans()">Plans</button>
+      <button onclick="showSection('sec-admin',this);loadAdmin()" id="adminBtn" style="display:none">Admin</button>
+    </nav>
+    <span class="user-pill" id="userPill"></span>
+  </div>
 </div>
 
 <div class="wrap">
 
 <!-- ============ NEW REVIEW ============ -->
 <div id="sec-review" class="section active">
-
-  <!-- Upload -->
   <div class="card" id="uploadCard">
     <div class="upzone" id="upzone" onclick="$('fileIn').click()">
       <div class="ic">&#128193;</div>
@@ -160,15 +207,11 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
     </div>
     <button class="btn btn-primary" id="btnGo" style="width:100%;margin-top:0.75rem" onclick="startReview()" disabled>Run QA Review</button>
   </div>
-
-  <!-- Progress -->
   <div class="card" id="progCard" style="display:none">
     <h2 class="loading" id="progTitle">Analysing submission...</h2>
     <div class="prog"><div class="prog-bar"><div class="prog-fill" id="progFill"></div></div></div>
     <div class="prog-txt" id="progTxt">Uploading file...</div>
   </div>
-
-  <!-- Results -->
   <div id="resultsArea"></div>
 </div>
 
@@ -177,6 +220,41 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
   <div id="statsRow" class="stats"></div>
   <div class="card"><h2>Review History</h2><div id="historyTable"></div></div>
   <div id="historyDetail"></div>
+</div>
+
+<!-- ============ REPORTS ============ -->
+<div id="sec-reports" class="section">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+    <h2 style="font-size:1.1rem;color:var(--p)">Performance Reports</h2>
+    <a href="/api/reports/export-csv" class="btn btn-outline btn-sm" download>&#8595; Export CSV</a>
+  </div>
+
+  <!-- Per-staff table -->
+  <div class="card">
+    <h2>Consultant Performance</h2>
+    <div id="staffReport"></div>
+  </div>
+
+  <!-- Weekly trend + top issues side by side -->
+  <div class="rpt-grid">
+    <div class="card">
+      <h2>Weekly Submissions (last 8 weeks)</h2>
+      <div id="weeklyChart"></div>
+    </div>
+    <div class="card">
+      <h2>Top Issues Causing Rejections</h2>
+      <div id="topIssues"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HEATH DASHBOARD ============ -->
+<div id="sec-heath" class="section">
+  <div class="card">
+    <h2>Heath Review Queue</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">All submissions that need Heath's attention — covenant flags, plan-fit issues, GeoSite problems.</p>
+    <div id="heathQueue"></div>
+  </div>
 </div>
 
 <!-- ============ PRE-LOG ============ -->
@@ -207,7 +285,23 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
   </div>
 </div>
 
+<!-- ============ ADMIN ============ -->
+<div id="sec-admin" class="section">
+  <div class="card">
+    <h2>Access Code Management</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Generate codes for each consultant. Each code is unique and tied to their name. Deactivate to revoke access.</p>
+    <div class="form-row three">
+      <div><label>Consultant Name *</label><input id="ac-name" placeholder="e.g. Ian Sullivan"></div>
+      <div><label>Email (optional)</label><input id="ac-email" placeholder="ian@ausmar.com.au"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn btn-green" onclick="createCode()" style="width:100%">Generate Code</button></div>
+    </div>
+    <div id="newCodeResult" style="margin-top:0.5rem"></div>
+    <div id="codesTable" style="margin-top:1rem"></div>
+  </div>
+</div>
+
 </div><!-- /wrap -->
+</div><!-- /mainApp -->
 
 <!-- Review Detail Modal -->
 <div class="modal-bg" id="detailModal">
@@ -222,8 +316,38 @@ const $=id=>document.getElementById(id);
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 let selFile=null;
 let pollTimer=null;
+let currentUser=null; // {consultant_name, email, code, is_admin}
 
-// --- Navigation ---
+// ============ ACCESS CODE GATE ============
+async function validateGate(){
+  const code=$('gateCode').value.trim().toUpperCase();
+  if(!code){$('gateErr').textContent='Enter your access code.';return}
+  $('gateErr').textContent='';
+  try{
+    // Admin bypass — code "ADMIN" shows admin tab
+    const r=await fetch('/api/access-codes/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const d=await r.json();
+    if(d.valid){
+      currentUser={consultant_name:d.consultant_name,email:d.email,code,is_admin:false};
+      enterApp();
+    } else {
+      $('gateErr').textContent=d.error||'Invalid code. Contact your manager.';
+    }
+  }catch(e){$('gateErr').textContent='Connection error. Try again.'}
+}
+
+function enterApp(){
+  $('gateScreen').style.display='none';
+  $('mainApp').style.display='block';
+  $('userPill').textContent=currentUser.consultant_name;
+  // Show admin tab if code starts with ADMIN
+  if(currentUser.code.startsWith('ADMIN')){
+    currentUser.is_admin=true;
+    $('adminBtn').style.display='';
+  }
+}
+
+// ============ NAVIGATION ============
 function showSection(id,btn){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   $(id).classList.add('active');
@@ -231,7 +355,7 @@ function showSection(id,btn){
   if(btn)btn.classList.add('active');
 }
 
-// --- File handling ---
+// ============ FILE HANDLING ============
 const uz=$('upzone');
 uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('over')});
 uz.addEventListener('dragleave',()=>uz.classList.remove('over'));
@@ -241,32 +365,28 @@ function onFile(e){if(e.target.files[0]){selFile=e.target.files[0];showFile()}}
 function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(selFile.size/1024/1024).toFixed(1)+' MB';$('fbar').style.display='flex';$('btnGo').disabled=false}
 function clearFile(){selFile=null;$('fbar').style.display='none';$('btnGo').disabled=true;$('fileIn').value=''}
 
-// --- Start Review (async) ---
+// ============ START REVIEW ============
 async function startReview(){
   if(!selFile)return;
   $('uploadCard').style.display='none';$('progCard').style.display='block';$('resultsArea').innerHTML='';
   $('progFill').style.width='5%';$('progTxt').textContent='Uploading file...';$('progTitle').textContent='Uploading submission...';$('progTitle').classList.add('loading');
 
   const fd=new FormData();fd.append('file',selFile);
+  // Attach consultant identity from access code
+  if(currentUser){fd.append('consultant_name',currentUser.consultant_name);fd.append('consultant_email',currentUser.email||'')}
   try{
     const r=await fetch('/api/review',{method:'POST',body:fd});
     const d=await r.json();
-
     if(r.status===202 && d.review_id){
-      // Async mode — start polling
       $('progFill').style.width='10%';$('progTxt').textContent='File uploaded. Processing...';$('progTitle').textContent='Analysing submission...';
       startPolling(d.review_id);
     } else if(d.error){
-      // Immediate error
       showError(d.error);
     } else {
-      // Fallback: immediate result (shouldn't happen with new backend)
       $('progFill').style.width='100%';$('progTxt').textContent='Complete.';
       setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
     }
-  }catch(e){
-    showError(e.message);
-  }
+  }catch(e){showError(e.message)}
 }
 
 function showError(msg){
@@ -275,14 +395,13 @@ function showError(msg){
   $('resultsArea').innerHTML=`<div class="verdict v-error"><div class="vl">Error</div><div class="vt">Upload Failed</div><div class="vr">${esc(msg)}</div></div><button class="btn btn-primary" onclick="resetReview()">Try Again</button>`;
 }
 
-// --- Polling ---
+// ============ POLLING ============
 function startPolling(reviewId){
   if(pollTimer)clearInterval(pollTimer);
   pollTimer=setInterval(async()=>{
     try{
       const r=await fetch(`/api/review/${reviewId}/status`);
       const d=await r.json();
-
       if(d.status==='processing'){
         const pct=d.progress||10;
         $('progFill').style.width=pct+'%';
@@ -297,14 +416,11 @@ function startPolling(reviewId){
         clearInterval(pollTimer);pollTimer=null;
         showError(d.error||'Review failed');
       }
-    }catch(e){
-      // Network error — keep polling, might recover
-      console.warn('Poll error:',e);
-    }
+    }catch(e){console.warn('Poll error:',e)}
   },3000);
 }
 
-// --- Render Results ---
+// ============ RENDER RESULTS ============
 function vclass(v){if(!v)return'v-error';const u=v.toUpperCase();if(u.includes('NOT ACCEPTED'))return'v-not-accepted';if(u.includes('ACCEPTED'))return'v-accepted';return'v-error'}
 function badge(iss,wrn){if(iss?.length)return'<span class="badge b-fail">FAIL</span>';if(wrn?.length)return'<span class="badge b-warn">WARN</span>';return'<span class="badge b-pass">PASS</span>'}
 function ilist(iss,wrn){let h='<ul class="ilist">';(iss||[]).forEach(i=>h+=`<li class="crit">${esc(i)}</li>`);(wrn||[]).forEach(w=>h+=`<li class="warn">${esc(w)}</li>`);if(!iss?.length&&!wrn?.length)h+='<li class="ok">No issues found</li>';return h+'</ul>'}
@@ -319,118 +435,78 @@ function renderResults(d){
   h+=`<div class="verdict ${vclass(v.verdict)}"><div class="vl">QA Verdict</div><div class="vt">${esc(v.verdict||'UNKNOWN')}</div><div class="vr">${esc(v.verdict_reason||'')}</div></div>`;
 
   // Meta
-  h+=`<div class="meta"><span>Zip: ${esc(d.zip_name||'')}</span><span>Type: ${esc(d.deposit_type||'?')}</span><span>Files: ${c.file_structure?.file_count||'?'}</span>`;
-  if(d.consultant_name)h+=`<span>Consultant: ${esc(d.consultant_name)}</span>`;
-  h+=`<span>Review #${rid||'?'}</span></div>`;
+  const dc=d.deal_code||d.zip_name||'';
+  const dt=d.deposit_type||'';
+  const cn=d.consultant_name||currentUser?.consultant_name||'';
+  if(dc||dt||cn)h+=`<div class="meta">${dc?`<span>Deal: <strong>${esc(dc)}</strong></span>`:''}${dt?`<span>Type: ${esc(dt)}</span>`:''}${cn?`<span>Consultant: ${esc(cn)}</span>`:''}${rid?`<span>Review #${rid}</span>`:''}</div>`;
 
-  // Corrections applied
-  if(d.corrections_applied?.length){
-    h+=`<div class="corr"><h4>Auto-Corrections Applied (${d.corrections_applied.length})</h4><ul>`;
-    d.corrections_applied.forEach(c2=>h+=`<li>${esc(c2)}</li>`);
-    h+=`</ul></div>`;
-    if(d.corrected_zip_filename)h+=`<div style="margin-bottom:0.75rem"><a href="/api/download/${rid}" class="btn btn-sm btn-green" download>Download Corrected Zip</a></div>`;
-  }
-
-  // Critical issues
-  if(v.critical_issues?.length){
-    h+=`<div class="card"><h2><span class="badge b-fail">CRITICAL</span> Issues</h2><ul class="ilist">`;
-    v.critical_issues.forEach(i=>h+=`<li class="crit">${esc(i)}</li>`);
-    h+=`</ul></div>`;
-  }
-
-  // Check tabs
-  h+=`<div class="card"><h2>Detailed Checks</h2><div class="tabs">`;
-  const tabs=[['structure','Structure',c.file_structure],['docs','Documents',c.document_completeness],['geosite','GeoSite',c.geosite_verification],['fit','Lot Fit',c.plan_to_lot_fit],['redpen','Red Pen',c.red_pen_markup],['pse','PSE Analysis',c.pse_analysis]];
-  tabs.forEach(([id,lbl,data],i)=>h+=`<div class="tab${i===0?' active':''}" onclick="switchTab(this,'tp-${id}')">${lbl} ${data?badge(data.issues,data.warnings):''}</div>`);
-  h+=`</div>`;
-
-  // Structure panel
-  h+=`<div class="tpanel active" id="tp-structure">${c.file_structure?ilist(c.file_structure.issues,c.file_structure.warnings):'No data'}`;
-  if(c.file_structure?.files){h+=`<h3 style="margin-top:0.5rem">Files</h3><div style="font-size:0.8rem">`;c.file_structure.files.forEach(f=>h+=`<div style="padding:0.15rem 0">&#128196; ${esc(f)}</div>`);h+=`</div>`}
-  h+=`</div>`;
-
-  // Docs panel
-  h+=`<div class="tpanel" id="tp-docs">${c.document_completeness?ilist(c.document_completeness.issues,c.document_completeness.warnings):'No data'}`;
-  if(c.document_completeness?.found_documents){h+=`<h3>Found</h3><div style="font-size:0.8rem">`;c.document_completeness.found_documents.forEach(d2=>h+=`<div style="padding:0.15rem 0;color:var(--grn)">&#10003; ${esc(d2)}</div>`);h+=`</div>`}
-  h+=`</div>`;
-
-  // GeoSite panel
-  h+=`<div class="tpanel" id="tp-geosite">${c.geosite_verification?ilist(c.geosite_verification.issues,c.geosite_verification.warnings):'No data'}</div>`;
-
-  // Lot Fit panel
-  h+=`<div class="tpanel" id="tp-fit">`;
-  if(c.plan_to_lot_fit){
-    h+=`<div style="font-size:0.85rem;margin-bottom:0.5rem">Plan: <strong>${esc(c.plan_to_lot_fit.plan_identified||'Unknown')}</strong> | Result: <strong>${esc(c.plan_to_lot_fit.fit_result||'Unknown')}</strong></div>`;
-    h+=ilist(c.plan_to_lot_fit.issues,c.plan_to_lot_fit.warnings);
-  }else h+='No data';
-  h+=`</div>`;
-
-  // Red Pen panel
-  h+=`<div class="tpanel" id="tp-redpen">${c.red_pen_markup?ilist(c.red_pen_markup.issues,c.red_pen_markup.warnings):'No data'}</div>`;
-
-  // PSE Analysis panel
-  h+=`<div class="tpanel" id="tp-pse">${c.pse_analysis?ilist(c.pse_analysis.issues,c.pse_analysis.warnings):'No data'}</div>`;
-
-  // Prelog crosscheck panel (if exists)
-  if(c.prelog_crosscheck){
-    h+=`<div style="margin-top:0.5rem;background:#fffff0;border:1px solid #fefcbf;border-radius:5px;padding:0.6rem 0.8rem"><h4 style="font-size:0.8rem;color:#975a16;margin-bottom:0.3rem">Pre-Log Cross-Check</h4>`;
-    h+=ilist(c.prelog_crosscheck.issues,c.prelog_crosscheck.warnings);
+  // Critical issues + warnings
+  if(v.critical_issues?.length||v.warnings?.length){
+    h+=`<div class="card"><h2>Issues &amp; Warnings</h2>`;
+    if(v.critical_issues?.length){h+=`<h3>&#128308; Critical Issues</h3>${ilist(v.critical_issues,[])}`}
+    if(v.warnings?.length){h+=`<h3>&#128993; Warnings</h3>${ilist([],v.warnings)}`}
     h+=`</div>`;
   }
-  h+=`</div>`;// close card
+
+  // Corrections
+  if(d.corrections_applied?.length){
+    h+=`<div class="corr"><h4>Auto-Corrections Applied</h4><ul>`;
+    d.corrections_applied.forEach(c=>h+=`<li>${esc(c)}</li>`);
+    h+=`</ul></div>`;
+    if(d.corrected_zip_path)h+=`<div style="margin:0.5rem 0"><a href="/api/download/${rid}" class="btn btn-sm btn-green" download>Download Corrected Zip</a></div>`;
+  }
 
   // Heath note
-  if(v.heath_review_note){
-    h+=`<div class="card"><h2>Heath Review Note <button class="cpbtn" onclick="copyBlock('heathBlock')">Copy</button></h2><div class="oblock" id="heathBlock">${esc(v.heath_review_note)}</div></div>`;
-  }
+  if(v.heath_review_note)h+=`<div class="card"><h2>Heath Review Note</h2><button class="cpbtn" onclick="cp('heathNote')">Copy</button><div class="oblock" id="heathNote">${esc(v.heath_review_note)}</div></div>`;
 
   // Consultant email
-  if(v.consultant_feedback_email){
-    h+=`<div class="card"><h2>Consultant Feedback Email <button class="cpbtn" onclick="copyBlock('emailBlock')">Copy</button></h2><div class="oblock" id="emailBlock">${esc(v.consultant_feedback_email)}</div></div>`;
-  }
+  if(v.consultant_feedback_email)h+=`<div class="card"><h2>Consultant Feedback Email</h2><button class="cpbtn" onclick="cp('conEmail')">Copy</button><div class="oblock" id="conEmail">${esc(v.consultant_feedback_email)}</div></div>`;
 
-  // Feedback section
-  if(rid){
-    h+=`<div class="card" id="fbCard"><h2>Review Feedback</h2>`;
-    h+=`<p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.5rem">Mark issues as correct or false positive. Add notes to help the system learn.</p>`;
-    h+=`<div id="fbItems">`;
-    // Build feedback items from all issues/warnings
-    let allItems=[];
-    for(const[ck,cd]of Object.entries(c)){
-      (cd.issues||[]).forEach(i=>allItems.push({check:ck,text:i,type:'issue'}));
-      (cd.warnings||[]).forEach(w=>allItems.push({check:ck,text:w,type:'warning'}));
-    }
-    if(allItems.length===0)h+=`<p style="font-size:0.8rem;color:var(--grn)">No issues to review.</p>`;
-    allItems.forEach((item,idx)=>{
-      h+=`<div class="fb-item" id="fbi-${idx}">
-        <div style="flex:1;font-size:0.8rem"><span class="badge ${item.type==='issue'?'b-fail':'b-warn'}">${item.type}</span> ${esc(item.text)}</div>
-        <div class="fb-btns">
-          <button class="btn btn-sm btn-green" onclick="sendFb(${rid},'${esc(item.check)}',\`${esc(item.text)}\`,true,${idx})">Correct</button>
-          <button class="btn btn-sm btn-red" onclick="promptFbNote(${rid},'${esc(item.check)}',\`${esc(item.text)}\`,${idx})">False Positive</button>
-        </div>
-      </div>`;
+  // Check details (tabs)
+  const checkKeys=Object.keys(c).filter(k=>k!=='file_structure');
+  if(checkKeys.length){
+    h+=`<div class="card"><h2>Check Details</h2><div class="tabs">`;
+    checkKeys.forEach((k,i)=>{
+      const chk=c[k];const iss=chk?.issues||[];const wrn=chk?.warnings||[];
+      h+=`<div class="tab${i===0?' active':''}" onclick="switchTab(this,'tp-${i}')">${badge(iss,wrn)} ${esc(k.replace(/_/g,' '))}</div>`;
     });
     h+=`</div>`;
-    h+=`<div style="margin-top:0.75rem"><label>General Notes</label><textarea id="fbGeneral" rows="2" placeholder="Any additional notes about this review..."></textarea>
-    <button class="btn btn-sm btn-primary" style="margin-top:0.4rem" onclick="sendGeneralFb(${rid})">Save Notes</button></div>`;
+    checkKeys.forEach((k,i)=>{
+      const chk=c[k];const iss=chk?.issues||[];const wrn=chk?.warnings||[];
+      h+=`<div class="tpanel${i===0?' active':''}" id="tp-${i}">${ilist(iss,wrn)}`;
+      if(chk?.summary)h+=`<p style="font-size:0.8rem;color:var(--g500);margin-top:0.5rem">${esc(chk.summary)}</p>`;
+      h+=`</div>`;
+    });
     h+=`</div>`;
   }
 
-  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetReview()">Run Another Review</button>`;
+  // Feedback
+  if(rid){
+    h+=`<div class="card"><h2>Flag False Positives</h2><p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">If any issue above is wrong, flag it so the engine can improve.</p>`;
+    const allIss=[...(v.critical_issues||[]),...(v.warnings||[])];
+    allIss.forEach((iss,idx)=>{
+      h+=`<div class="fb-item" id="fbi-${idx}"><div style="flex:1;font-size:0.85rem">${esc(iss)}</div><div class="fb-btns"><button class="btn btn-sm btn-outline" onclick="sendFb(${rid},'qa',${JSON.stringify(iss)},true,${idx})">&#10003; Correct</button><button class="btn btn-sm btn-red" onclick="promptFbNote(${rid},'qa',${JSON.stringify(iss)},${idx})">&#10007; False Positive</button></div></div>`;
+    });
+    h+=`<div style="margin-top:0.75rem"><label>General notes for this review</label><textarea id="fbGeneral" rows="2" placeholder="Any additional notes..."></textarea><button class="btn btn-sm btn-outline" style="margin-top:0.4rem" onclick="sendGeneralFb(${rid})">Save Notes</button></div></div>`;
+  }
+
+  h+=`<button class="btn btn-primary" onclick="resetReview()" style="margin-top:0.5rem">New Review</button>`;
   a.innerHTML=h;
 }
 
 function switchTab(el,panelId){
-  el.closest('.card').querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');
-  el.closest('.card').querySelectorAll('.tpanel').forEach(p=>p.classList.remove('active'));
-  $(panelId).classList.add('active');
+  const card=el.closest('.card');
+  card.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  card.querySelectorAll('.tpanel').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(panelId).classList.add('active');
 }
 
-function copyBlock(id){
-  navigator.clipboard.writeText($(id).textContent).then(()=>{
-    const btn=$(id).closest('.card').querySelector('.cpbtn');
-    if(btn){const o=btn.textContent;btn.textContent='Copied!';setTimeout(()=>btn.textContent=o,1200)}
-  });
+function cp(id){
+  const el=$(id);if(!el)return;
+  navigator.clipboard.writeText(el.textContent).catch(()=>{});
+  const btn=el.closest('.card').querySelector('.cpbtn');
+  if(btn){const o=btn.textContent;btn.textContent='Copied!';setTimeout(()=>btn.textContent=o,1200)}
 }
 
 function resetReview(){
@@ -438,26 +514,28 @@ function resetReview(){
   clearFile();$('uploadCard').style.display='block';$('progCard').style.display='none';$('resultsArea').innerHTML='';$('progFill').style.width='0%';
 }
 
-// --- Feedback ---
+// ============ FEEDBACK ============
 async function sendFb(rid,check,text,correct,idx){
   const notes=correct?'':prompt('Why is this a false positive?')||'';
-  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:check,issue_text:text,is_correct:correct,notes,submitted_by:'staff'})});
+  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:check,issue_text:text,is_correct:correct,notes,submitted_by:currentUser?.consultant_name||'staff'})});
   const el=$(`fbi-${idx}`);if(el){el.style.opacity='0.4';el.innerHTML=`<div style="flex:1;font-size:0.8rem">${esc(text)} — <strong>${correct?'Confirmed correct':'Marked false positive'}</strong></div>`}
 }
 function promptFbNote(rid,check,text,idx){sendFb(rid,check,text,false,idx)}
 async function sendGeneralFb(rid){
   const notes=$('fbGeneral').value.trim();if(!notes)return;
-  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:'general',issue_text:'General note',is_correct:true,notes,submitted_by:'staff'})});
+  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:'general',issue_text:'General note',is_correct:true,notes,submitted_by:currentUser?.consultant_name||'staff'})});
   $('fbGeneral').value='';alert('Notes saved.');
 }
 
-// --- History ---
+// ============ HISTORY ============
 async function loadHistory(){
   const[stats,reviews]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/reviews').then(r=>r.json())]);
+  const acceptRate=stats.total?Math.round(stats.accepted/stats.total*100):0;
   $('statsRow').innerHTML=`
     <div class="stat"><div class="num">${stats.total}</div><div class="lbl">Total Reviews</div></div>
     <div class="stat"><div class="num" style="color:var(--grn)">${stats.accepted}</div><div class="lbl">Accepted</div></div>
-    <div class="stat"><div class="num" style="color:var(--acc)">${stats.not_accepted}</div><div class="lbl">Not Accepted</div></div>`;
+    <div class="stat"><div class="num" style="color:var(--acc)">${stats.not_accepted}</div><div class="lbl">Not Accepted</div></div>
+    <div class="stat"><div class="num" style="color:var(--blu)">${acceptRate}%</div><div class="lbl">Accept Rate</div></div>`;
 
   if(!reviews.length){$('historyTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No reviews yet.</p>';return}
   let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Type</th><th>Date</th><th></th></tr></thead><tbody>';
@@ -494,7 +572,113 @@ async function viewReview(id){
 function closeModal(id){$(id).classList.remove('show')}
 $('detailModal').addEventListener('click',e=>{if(e.target===$('detailModal'))closeModal('detailModal')});
 
-// --- Plans ---
+// ============ REPORTS ============
+async function loadReports(){
+  const[staff,weekly,issues]=await Promise.all([
+    fetch('/api/reports/staff').then(r=>r.json()),
+    fetch('/api/reports/weekly').then(r=>r.json()),
+    fetch('/api/reports/top-issues').then(r=>r.json()),
+  ]);
+
+  // Per-staff table
+  if(!staff.length){$('staffReport').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No data yet — reviews must have consultant names attached.</p>';}
+  else{
+    let h='<table class="tbl"><thead><tr><th>Consultant</th><th>Total</th><th>Accepted</th><th>Not Accepted</th><th>NHP</th><th>STC</th><th>Accept Rate</th></tr></thead><tbody>';
+    staff.forEach(s=>{
+      const rateCls=s.accept_rate>=80?'rate-high':s.accept_rate>=50?'rate-mid':'rate-low';
+      h+=`<tr><td><strong>${esc(s.consultant_name)}</strong></td><td>${s.total}</td><td style="color:var(--grn)">${s.accepted}</td><td style="color:var(--acc)">${s.not_accepted}</td><td>${s.nhp}</td><td>${s.stc}</td><td><strong class="${rateCls}">${s.accept_rate}%</strong></td></tr>`;
+    });
+    h+='</tbody></table>';
+    $('staffReport').innerHTML=h;
+  }
+
+  // Weekly trend as horizontal bar chart
+  if(!weekly.length){$('weeklyChart').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No data yet.</p>';}
+  else{
+    const maxTotal=Math.max(...weekly.map(w=>w.total),1);
+    let h='';
+    weekly.forEach(w=>{
+      const accPct=Math.round(w.accepted/w.total*100)||0;
+      const fillW=Math.round(w.total/maxTotal*100);
+      h+=`<div class="bar-row">
+        <div class="bar-label">${esc(w.week)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${fillW}%;background:var(--p)"></div></div>
+        <div class="bar-val">${w.total} <span style="font-size:0.7rem;color:var(--grn)">(${accPct}%)</span></div>
+      </div>`;
+    });
+    $('weeklyChart').innerHTML=h;
+  }
+
+  // Top issues
+  if(!issues.length){$('topIssues').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No rejection data yet.</p>';}
+  else{
+    const maxCount=Math.max(...issues.map(i=>i.count),1);
+    let h='';
+    issues.forEach(i=>{
+      const fillW=Math.round(i.count/maxCount*100);
+      h+=`<div class="bar-row">
+        <div class="bar-label" title="${esc(i.issue)}">${esc(i.issue.length>35?i.issue.slice(0,35)+'…':i.issue)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${fillW}%;background:var(--acc)"></div></div>
+        <div class="bar-val">${i.count}</div>
+      </div>`;
+    });
+    $('topIssues').innerHTML=h;
+  }
+}
+
+// ============ HEATH DASHBOARD ============
+async function loadHeath(){
+  const reviews=await fetch('/api/reviews').then(r=>r.json());
+  // Show all reviews that have heath_note or critical_issues
+  const flagged=reviews.filter(r=>{
+    if(r.heath_note&&r.heath_note.trim())return true;
+    try{const ci=JSON.parse(r.critical_issues||'[]');return ci.length>0}catch{return false}
+  });
+  if(!flagged.length){$('heathQueue').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No flagged submissions. All clear.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Type</th><th>Key Issues</th><th>Date</th><th></th></tr></thead><tbody>';
+  flagged.forEach(r=>{
+    let ci=[];try{ci=JSON.parse(r.critical_issues||'[]')}catch{}
+    const vc=r.verdict||'';
+    let bcls='b-info';if(vc.includes('NOT ACCEPTED'))bcls='b-fail';else if(vc.includes('ACCEPTED'))bcls='b-pass';
+    const topIss=ci.slice(0,2).map(i=>i.length>60?i.slice(0,60)+'…':i).join('; ');
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||r.zip_name)}</strong></td><td><span class="badge ${bcls}">${esc(vc)}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(r.deposit_type||'-')}</td><td style="font-size:0.75rem;color:var(--g600)">${esc(topIss||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('heathQueue').innerHTML=h;
+}
+
+// ============ ADMIN — ACCESS CODES ============
+async function loadAdmin(){
+  const codes=await fetch('/api/access-codes').then(r=>r.json());
+  if(!codes.length){$('codesTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No codes yet.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>Code</th><th>Consultant</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>';
+  codes.forEach(c=>{
+    h+=`<tr><td><strong style="font-family:monospace;letter-spacing:0.1em">${esc(c.code)}</strong></td><td>${esc(c.consultant_name)}</td><td>${esc(c.email||'-')}</td><td><span class="badge ${c.active?'b-pass':'b-fail'}">${c.active?'Active':'Inactive'}</span></td><td>${c.created_at?new Date(c.created_at).toLocaleDateString():'-'}</td><td>${c.active?`<button class="btn btn-sm btn-red" onclick="deactivateCode(${c.id})">Revoke</button>`:''}</td></tr>`;
+  });
+  h+='</tbody></table>';
+  $('codesTable').innerHTML=h;
+}
+
+async function createCode(){
+  const name=$('ac-name').value.trim();if(!name){alert('Consultant name required');return}
+  const r=await fetch('/api/access-codes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consultant_name:name,email:$('ac-email').value.trim()})});
+  const d=await r.json();
+  if(d.code){
+    $('newCodeResult').innerHTML=`<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:5px;padding:0.75rem;font-size:0.9rem">Code generated for <strong>${esc(name)}</strong>: <strong style="font-family:monospace;font-size:1.1rem;letter-spacing:0.15em;color:var(--p)">${esc(d.code)}</strong> — share this with them.</div>`;
+    $('ac-name').value='';$('ac-email').value='';
+    loadAdmin();
+  } else {
+    $('newCodeResult').innerHTML=`<div style="color:var(--acc)">${esc(d.error||'Error')}</div>`;
+  }
+}
+
+async function deactivateCode(id){
+  if(!confirm('Revoke this access code? The consultant will not be able to log in.'))return;
+  await fetch(`/api/access-codes/${id}`,{method:'DELETE'});
+  loadAdmin();
+}
+
+// ============ PLANS ============
 async function loadPlans(){
   const plans=await fetch('/api/plans').then(r=>r.json());
   if(!plans.length){$('plansTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No plans yet.</p>';return}
@@ -518,7 +702,7 @@ async function delPlan(id){
   await fetch(`/api/plans/${id}`,{method:'DELETE'});loadPlans();
 }
 
-// --- Pre-logs ---
+// ============ PRE-LOGS ============
 async function loadPrelogs(){
   const pls=await fetch('/api/prelogs').then(r=>r.json());
   if(!pls.length){$('prelogTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No pre-logged jobs yet.</p>';return}
@@ -535,7 +719,7 @@ async function submitPrelog(){
   const code=$('pl-code').value.trim();if(!code){alert('Deal code required');return}
   const fd=new FormData();
   fd.append('deal_code',code);
-  fd.append('consultant_name',$('pl-consultant').value);
+  fd.append('consultant_name',$('pl-consultant').value||currentUser?.consultant_name||'');
   fd.append('deposit_amount',$('pl-amount').value);
   fd.append('customer_names',$('pl-customers').value);
   fd.append('notes',$('pl-notes').value);
