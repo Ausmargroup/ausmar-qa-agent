@@ -380,15 +380,12 @@ def mark_prelog_matched(prelog_id, review_id):
 def get_review_stats():
     conn = get_db()
     total = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-    accepted = conn.execute("SELECT COUNT(*) FROM reviews WHERE verdict LIKE '%ACCEPTED%' AND verdict NOT LIKE '%NOT%' AND verdict NOT LIKE '%CONCERN%'").fetchone()[0]
+    # Two-state model: ACCEPTED (any verdict without NOT ACCEPTED) vs NOT ACCEPTED
     not_accepted = conn.execute("SELECT COUNT(*) FROM reviews WHERE verdict LIKE '%NOT ACCEPTED%'").fetchone()[0]
-    concerns = conn.execute("SELECT COUNT(*) FROM reviews WHERE verdict LIKE '%CONCERN%'").fetchone()[0]
-    parked = conn.execute("SELECT COUNT(*) FROM reviews WHERE verdict LIKE '%PARKED%'").fetchone()[0]
+    accepted = total - not_accepted
     conn.close()
     return {
         "total": total,
         "accepted": accepted,
         "not_accepted": not_accepted,
-        "concerns": concerns,
-        "parked": parked,
     }

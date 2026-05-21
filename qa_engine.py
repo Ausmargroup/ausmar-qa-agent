@@ -606,14 +606,14 @@ CONTENT_FINGERPRINTS = [
         "keywords": ["provisional sales estimate", "total contract price", "base price",
                       "inclusions and exclusions", "pse document", "sales estimate"],
         "min_matches": 1,
-        "extensions": [".pdf"],
+        "extensions": [".pdf", ".docx"],
     }),
     # ITP — Intention to Purchase agreement
     ("itp", {
         "keywords": ["intention to purchase", "purchaser details", "purchaser name",
                       "intention to proceed", "purchase agreement", "itp form"],
         "min_matches": 1,
-        "extensions": [".pdf"],
+        "extensions": [".pdf", ".docx"],
     }),
     # GeoSite Plan
     ("geosite", {
@@ -672,11 +672,11 @@ CONTENT_FINGERPRINTS = [
         "min_matches": 1,
         "extensions": [".pdf"],
     }),
-    # Acoustic Report
+    # Acoustic Report — min_matches=2 to avoid beating Disclosure Plan on single keyword
     ("acoustic_report", {
         "keywords": ["acoustic", "noise assessment", "acoustic report",
                       "noise category", "acoustic category", "db(a)"],
-        "min_matches": 1,
+        "min_matches": 2,
         "extensions": [".pdf"],
     }),
     # BAL Report
@@ -794,6 +794,13 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
                 return "pse_excel", 1.0
         # Any spreadsheet in a PSE submission zip is almost certainly the PSE Excel
         return "pse_excel", 0.8
+
+    # --- Tier 1.5: Filename wins for Disclosure Plan to prevent acoustic mis-tag ---
+    # A file named "disclosure plan" or "survey plan" should NEVER be tagged acoustic
+    # even if it contains the word "acoustic" in passing.
+    disclosure_fn_signals = ["disclosure plan", "survey plan", "plan of sub", "plan of survey"]
+    if ext == ".pdf" and any(s in fn_lower for s in disclosure_fn_signals):
+        return "disclosure_plan", 0.9
 
     # --- Tier 1b: PDF text-based classification ---
     if ext == ".pdf" and text_lower:
@@ -1351,10 +1358,11 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
             if val is not None and isinstance(val, (int, float)):
                 min_side = (reg_rules or {}).get("side_setback_m", 0.75)
                 if val < min_side:
-                    issues.append(
-                        f"RED FLAG: {side_label} side setback is {val}m — minimum is {min_side}m "
+                    # Demoted to WARNING — build-to-boundary lots are valid per covenant
+                    warnings.append(
+                        f"{side_label} side setback is {val}m — minimum is {min_side}m "
                         f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'}). "
-                        f"Plan may be too wide for this lot."
+                        f"Verify against covenant — may be a build-to-boundary lot."
                     )
 
         coverage = analysis.get("site_coverage_percent")
@@ -1897,35 +1905,50 @@ def generate_verdict(all_results: dict) -> dict:
 
     system_prompt = """You are the AUSMAR PSE QA Review Agent. Based on the check results, generate the final QA output.
 
-DECISION FRAMEWORK (from real AUSMAR reviews):
-- ACCEPTED: All checks pass, no content concerns.
-- ACCEPTED — Minor admin notes: Admin/naming issues only (already auto-fixed), content is sound
-- ACCEPTED WITH CONCERNS: Content borderline but can proceed with caveats.
-- NOT ACCEPTED: Critical failures (plan doesn't fit, missing critical docs, covenant breach, etc.)
-- PARKED: Missing deal code or awaiting external input
+DECISION FRAMEWORK — TWO STATES ONLY:
+- ACCEPTED: Submission passes QA. May include warnings/notes but no blocking issues.
+- NOT ACCEPTED: One or more blocking issues found. Consultant must resubmit.
+
+BLOCKING ISSUES (verdict = NOT ACCEPTED):
+- Missing a CORE REQUIRED document (PSE Doc, PSE Excel, GeoSite, ITP, Deposit Receipt, Drivers Licence, Red Pen, Promo Ack)
+- PSE Excel total and PSE Signed PDF total differ by more than $100
+- PSE price sheet period doesn't match the deposit date month
+- Any issue containing the word "CRITICAL" in the check results
+- Plan demonstrably does not fit the lot (width exceeds available space after setbacks)
+
+NON-BLOCKING (include in warnings, do NOT reject for these alone):
+- Setback minimums close to limit but within tolerance
+- Unclassified files (unless they are clearly a missing required doc)
+- Admin/naming issues (already auto-fixed)
+- LHDC checks (disabled — not a blocking issue)
 
 CRITICAL RULES:
 1. Gas cooktops are EXEMPT from covenant gas bans per Stockland ruling. Do NOT flag them.
-2. If the PSE Excel total and PSE Signed PDF total differ by more than $100, this is a CRITICAL issue — verdict MUST be NOT ACCEPTED.
-3. If the PSE price sheet period doesn't match the deposit date month, this is a CRITICAL issue — verdict MUST be NOT ACCEPTED.
-4. Any issue containing the word "CRITICAL" in the check results is a rejection-worthy issue.
-5. Red Pen markups using colored highlights (green, yellow, blue, pink) ARE valid — do NOT flag them as "not in red".
-
-ACCURACY IS CRITICAL: Do NOT flag false positives. Only flag issues you are confident about.
-Admin/naming corrections have been auto-applied. Don't mention those as issues.
+2. Red Pen markups using colored highlights (green, yellow, blue, pink) ARE valid — do NOT flag them as "not in red".
+3. ACCURACY IS CRITICAL: Do NOT flag false positives. Only flag issues you are confident about.
+4. Admin/naming corrections have been auto-applied. Don't mention those as issues.
 
 Output valid JSON:
 {
-  "verdict": "one of the above verdicts",
+  "verdict": "ACCEPTED or NOT ACCEPTED",
   "verdict_reason": "one-line reason",
-  "critical_issues": ["list of rejection-worthy issues only"],
-  "warnings": ["list of concerns that don't block acceptance"],
+  "critical_issues": ["list of blocking issues only — empty if ACCEPTED"],
+  "warnings": ["list of non-blocking concerns"],
   "heath_review_note": "Technical summary for Heath Nunn (Drafting Manager). Cover GeoSite accuracy, Red Pen quality, plan-to-lot fit, site coverage, acoustic/covenant concerns. Include PSE price comparison results if available. Be specific with numbers. 2-4 paragraphs.",
   "consultant_feedback_email": "Professional email to the consultant. Start with 'Hi [consultant name],' and end with 'Regards,\\nNik'. Be specific about what needs fixing. If accepted, acknowledge good work briefly."
 }"""
 
     raw = call_text_model(system_prompt, f"QA results for {deal_code}:\n\n{results_summary}", model="gpt-4.1-mini")
-    return parse_json_from_llm(raw)
+    result = parse_json_from_llm(raw)
+
+    # Normalise verdict to exactly two states — collapse any LLM drift
+    v = str(result.get("verdict", "")).upper()
+    if "NOT ACCEPTED" in v or "NOT ACCEPT" in v:
+        result["verdict"] = "NOT ACCEPTED"
+    else:
+        result["verdict"] = "ACCEPTED"
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2266,149 +2289,23 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
             except Exception as e:
                 print(f"[WARN] Red Pen to PSE cross-reference failed: {e}")
 
-        # === Check 9: LHDC (Liveable Housing Design Criteria) ===
-        # Determine if LHDC applies based on frontage and regional rules
-        _progress(88, "Checking Liveable Housing Design Criteria...")
-        lot_frontage = None
-        # Try multiple sources for lot frontage
-        lot_dims = geosite_result.get("lot_dimensions") or {}
-        if lot_dims.get("width"):
-            try:
-                lot_frontage = float(lot_dims["width"])
-            except (TypeError, ValueError):
-                pass
-        # Also try the GeoSite analysis dict directly
-        if lot_frontage is None:
-            for key in ("lot_width_m", "frontage_m", "lot_frontage_m"):
-                val = gs_analysis.get(key)
-                if val is not None:
-                    try:
-                        lot_frontage = float(val)
-                        break
-                    except (TypeError, ValueError):
-                        pass
-        print(f"[DEBUG] lot_frontage for LHDC: {lot_frontage}m")
-        
-        # Detect regional rules from estate/address
+        # === Check 9: LHDC — DISABLED (100% false positive rate on 14/14 staff reviews) ===
+        # LHDC checks require physical inspection of stamped drawings, not floor plan PDFs.
+        # Re-enable only if AUSMAR confirms a specific council mandates it at PSE stage.
+        _progress(88, "LHDC check skipped (disabled)...")
+        # Still detect regional rules for other checks (setbacks, coverage)
         estate_name = results.get("estate") or gs_analysis.get("estate_name") or ""
         street_addr = results.get("street") or gs_analysis.get("street_address") or ""
         regional_rules = detect_regional_rules(estate_name, street_addr)
         results["regional_rules"] = regional_rules["name"] if regional_rules else "Unknown (no council match)"
-        
-        apply_lhdc, lhdc_reason = should_apply_lhdc(lot_frontage, regional_rules)
-        results["lhdc_applicable"] = apply_lhdc
-        results["lhdc_reason"] = lhdc_reason
-        print(f"[DEBUG] LHDC applicable: {apply_lhdc} — {lhdc_reason}")
-        
-        if apply_lhdc and ("red_pen" in file_map or "geosite" in file_map):
-            try:
-                # Use Red Pen page 1 (floor plan) for LHDC analysis — it has the most detail
-                lhdc_source = file_map.get("red_pen") or file_map.get("geosite")
-                lhdc_path = lhdc_source["full_path"]
-                lhdc_pages = pdf_all_pages_to_base64(lhdc_path, dpi=150, max_pages=2)
-                if lhdc_pages:
-                    raw = call_vision_model(
-                        "You are an AUSMAR QA reviewer checking a floor plan for Liveable Housing Design Criteria (LHDC) compliance. "
-                        "LHDC is about wheelchair accessibility and liveable design for Australian homes.\n\n"
-                        "CHECK THESE SPECIFIC ITEMS:\n"
-                        "1. LAUNDRY (LDRY) WIDTH: Must be minimum 1650mm wide for LHDC. Look for the laundry room dimensions. "
-                        "If the laundry width is less than 1650mm, this is a FAIL.\n"
-                        "2. HALLWAY WIDTH near BED 3: Check if there is a linen cupboard near BED 3 that could reduce "
-                        "hallway width below 1000mm. Hallways must be minimum 1000mm for wheelchair access.\n"
-                        "3. WC (TOILET) near BED 4: Check the door type. For LHDC compliance, the WC needs a CSD "
-                        "(Concealed Sliding Door) or sliding door, not a standard hinged door, to allow wheelchair access.\n"
-                        "4. ACCESSIBLE BATHROOM: At least one bathroom or ensuite must have space for an accessible shower "
-                        "(minimum 1160mm x 1100mm clear floor space). Check if either the main bathroom or ensuite "
-                        "could accommodate this.\n\n"
-                        "Return ONLY a JSON object:\n"
-                        '{"laundry_width_mm": "estimated width in mm or null if not visible", '
-                        '"laundry_compliant": true/false/null, '
-                        '"hallway_width_near_bed3_mm": "estimated width or null", '
-                        '"hallway_compliant": true/false/null, '
-                        '"linen_cupboard_blocks_hallway": true/false/null, '
-                        '"wc_near_bed4_door_type": "hinged/sliding/csd/unknown", '
-                        '"wc_door_compliant": true/false/null, '
-                        '"accessible_shower_possible": true/false/null, '
-                        '"lhdc_concerns": ["list of specific LHDC issues found"], '
-                        '"notes": "brief overall assessment"}\n\n'
-                        "IMPORTANT: Only flag issues you can clearly see from the floor plan dimensions. "
-                        "If dimensions are not visible, note that rather than guessing.",
-                        "Analyse this floor plan for Liveable Housing Design Criteria (LHDC) compliance. "
-                        "Focus on laundry width, hallway widths, WC door types, and bathroom accessibility.",
-                        lhdc_pages[:2],  # First 2 pages (floor plan)
-                    )
-                    lhdc_result = parse_json_from_llm(raw)
-                    lhdc_issues = []
-                    lhdc_warnings = []
-
-                    # Laundry width check
-                    if lhdc_result.get("laundry_compliant") is False:
-                        width = lhdc_result.get("laundry_width_mm", "unknown")
-                        lhdc_issues.append(
-                            f"LHDC: Laundry width ({width}mm) is below the 1650mm minimum "
-                            f"required for liveable housing compliance"
-                        )
-
-                    # Hallway width check
-                    if lhdc_result.get("linen_cupboard_blocks_hallway") is True:
-                        lhdc_issues.append(
-                            "LHDC: Linen cupboard near BED 3 may reduce hallway width below "
-                            "1000mm minimum for wheelchair accessibility"
-                        )
-                    elif lhdc_result.get("hallway_compliant") is False:
-                        lhdc_issues.append(
-                            "LHDC: Hallway width near BED 3 may be below 1000mm minimum "
-                            "for wheelchair accessibility"
-                        )
-
-                    # WC door type check
-                    if lhdc_result.get("wc_door_compliant") is False:
-                        door_type = lhdc_result.get("wc_near_bed4_door_type", "unknown")
-                        lhdc_issues.append(
-                            f"LHDC: WC near BED 4 has {door_type} door — needs CSD (Concealed Sliding Door) "
-                            f"for accessible toilet compliance"
-                        )
-
-                    # Accessible shower check
-                    if lhdc_result.get("accessible_shower_possible") is False:
-                        lhdc_warnings.append(
-                            "LHDC: Neither bathroom nor ensuite appears to have space for an accessible shower "
-                            "(1160mm x 1100mm clear floor space) — whole house needs LHDC consideration"
-                        )
-
-                    # Add any additional concerns from the model (skip duplicates)
-                    extra_concerns = lhdc_result.get("lhdc_concerns", [])
-                    all_existing = " ".join(lhdc_issues + lhdc_warnings).lower()
-                    for concern in extra_concerns:
-                        if not concern:
-                            continue
-                        # Skip if the key topic is already covered
-                        concern_lower = concern.lower()
-                        # Extract key words to check for overlap
-                        skip = False
-                        for keyword in ["laundry", "hallway", "linen", "wc", "toilet", "shower", "bathroom", "ensuite"]:
-                            if keyword in concern_lower and keyword in all_existing:
-                                skip = True
-                                break
-                        if not skip:
-                            lhdc_warnings.append(f"LHDC: {concern}")
-
-                    results["checks"]["lhdc_assessment"] = {
-                        "issues": lhdc_issues,
-                        "warnings": lhdc_warnings,
-                        "analysis": lhdc_result,
-                        "lhdc_reason": lhdc_reason,
-                    }
-            except Exception as e:
-                print(f"[WARN] LHDC check failed: {e}")
-        else:
-            # LHDC not applicable — record the reason
-            results["checks"]["lhdc_assessment"] = {
-                "issues": [],
-                "warnings": [],
-                "analysis": {"skipped": True, "reason": lhdc_reason},
-                "lhdc_reason": lhdc_reason,
-            }
+        results["lhdc_applicable"] = False
+        results["lhdc_reason"] = "LHDC check disabled — not applicable at PSE submission stage"
+        results["checks"]["lhdc_assessment"] = {
+            "issues": [],
+            "warnings": [],
+            "analysis": {"skipped": True, "reason": "LHDC check disabled — not applicable at PSE submission stage"},
+            "lhdc_reason": "LHDC check disabled — not applicable at PSE submission stage",
+        }
 
         # === Build corrected zip ===
         if results["corrections_applied"]:

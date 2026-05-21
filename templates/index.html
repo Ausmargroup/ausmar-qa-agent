@@ -61,11 +61,10 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
 .loading{animation:pulse 1.5s ease-in-out infinite}
 
-/* Verdict */
+/* Verdict — two states only */
 .verdict{border-radius:8px;padding:1.2rem 1.5rem;color:#fff;margin-bottom:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.12)}
-.verdict.v-accepted{background:var(--grn)}.verdict.v-minor{background:var(--blu)}
-.verdict.v-concerns{background:var(--org)}.verdict.v-not-accepted{background:var(--acc)}
-.verdict.v-parked{background:var(--g500)}.verdict.v-error{background:var(--g700)}
+.verdict.v-accepted{background:var(--grn)}.verdict.v-not-accepted{background:var(--acc)}
+.verdict.v-error{background:var(--g700)}
 .verdict .vl{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;opacity:0.85}
 .verdict .vt{font-size:1.4rem;font-weight:700;margin:0.2rem 0}
 .verdict .vr{font-size:0.9rem;opacity:0.95}
@@ -306,7 +305,7 @@ function startPolling(reviewId){
 }
 
 // --- Render Results ---
-function vclass(v){if(!v)return'v-error';const u=v.toUpperCase();if(u==='ACCEPTED')return'v-accepted';if(u.includes('MINOR'))return'v-minor';if(u.includes('CONCERN'))return'v-concerns';if(u.includes('NOT ACCEPTED'))return'v-not-accepted';if(u.includes('PARKED'))return'v-parked';return'v-error'}
+function vclass(v){if(!v)return'v-error';const u=v.toUpperCase();if(u.includes('NOT ACCEPTED'))return'v-not-accepted';if(u.includes('ACCEPTED'))return'v-accepted';return'v-error'}
 function badge(iss,wrn){if(iss?.length)return'<span class="badge b-fail">FAIL</span>';if(wrn?.length)return'<span class="badge b-warn">WARN</span>';return'<span class="badge b-pass">PASS</span>'}
 function ilist(iss,wrn){let h='<ul class="ilist">';(iss||[]).forEach(i=>h+=`<li class="crit">${esc(i)}</li>`);(wrn||[]).forEach(w=>h+=`<li class="warn">${esc(w)}</li>`);if(!iss?.length&&!wrn?.length)h+='<li class="ok">No issues found</li>';return h+'</ul>'}
 
@@ -458,15 +457,13 @@ async function loadHistory(){
   $('statsRow').innerHTML=`
     <div class="stat"><div class="num">${stats.total}</div><div class="lbl">Total Reviews</div></div>
     <div class="stat"><div class="num" style="color:var(--grn)">${stats.accepted}</div><div class="lbl">Accepted</div></div>
-    <div class="stat"><div class="num" style="color:var(--acc)">${stats.not_accepted}</div><div class="lbl">Not Accepted</div></div>
-    <div class="stat"><div class="num" style="color:var(--org)">${stats.concerns}</div><div class="lbl">Concerns</div></div>
-    <div class="stat"><div class="num" style="color:var(--g500)">${stats.parked}</div><div class="lbl">Parked</div></div>`;
+    <div class="stat"><div class="num" style="color:var(--acc)">${stats.not_accepted}</div><div class="lbl">Not Accepted</div></div>`;
 
   if(!reviews.length){$('historyTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No reviews yet.</p>';return}
   let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Type</th><th>Date</th><th></th></tr></thead><tbody>';
   reviews.forEach(r=>{
     const vc=r.verdict||'';
-    let bcls='b-info';if(vc.includes('NOT ACCEPTED'))bcls='b-fail';else if(vc.includes('CONCERN'))bcls='b-warn';else if(vc.includes('ACCEPTED'))bcls='b-pass';else if(vc.includes('PARKED'))bcls='b-info';
+    let bcls='b-info';if(vc.includes('NOT ACCEPTED'))bcls='b-fail';else if(vc.includes('ACCEPTED'))bcls='b-pass';
     h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||r.zip_name)}</strong></td><td><span class="badge ${bcls}">${esc(vc)}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(r.deposit_type||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button></td></tr>`;
   });
   h+='</tbody></table>';
