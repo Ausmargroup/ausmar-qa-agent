@@ -370,9 +370,13 @@ def api_wipe_history():
         return jsonify({"error": "Admin access required"}), 403
     try:
         conn = db.get_db()
-        conn.execute("DELETE FROM reviews")
+        # Disable FK checks, delete child tables first, then parent
+        conn.execute("PRAGMA foreign_keys=OFF")
         conn.execute("DELETE FROM feedback")
         conn.execute("DELETE FROM pending_reviews")
+        conn.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
+        conn.execute("DELETE FROM reviews")
+        conn.execute("PRAGMA foreign_keys=ON")
         conn.commit()
         conn.close()
         return jsonify({"ok": True, "message": "All review history wiped."})
