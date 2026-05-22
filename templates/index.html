@@ -341,8 +341,8 @@ function enterApp(){
   $('gateScreen').style.display='none';
   $('mainApp').style.display='block';
   $('userPill').textContent=currentUser.consultant_name;
-  // Show admin tab if code starts with ADMIN
-  if(currentUser.code.startsWith('ADMIN')){
+  // Show admin tab if consultant_name contains 'admin' (case-insensitive)
+  if(currentUser.consultant_name.toLowerCase().includes('admin')){
     currentUser.is_admin=true;
     $('adminBtn').style.display='';
   }
