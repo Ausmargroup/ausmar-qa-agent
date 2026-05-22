@@ -1789,38 +1789,39 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
         warnings = []
 
         if deposit_type == "NHP":
-            # SOFTENED: Only hard-block if markups are NOT on an AUSMAR base plan.
-            # Colour, dimensions, coverage, signatures — all warnings only.
-            # Rationale: if ANY markups are present on an AUSMAR plan, accept it.
+            # CRITICAL checks — all three block acceptance:
+            # 1. Must be on AUSMAR base plan
+            # 2. Must be in colour
+            # 3. Must include full set of plan types (to prove changes or no changes)
+            # 4. Must be signed/initialled by customer
             if analysis.get("is_on_ausmar_base_plan") is False:
                 issues.append(
                     "Markups NOT on standard AUSMAR base plan — "
                     "must overlay AUSMAR plan, not consultant's own program "
                     "(real rejection reason from S26TLS)"
                 )
-
-            # All other checks are warnings only
             if analysis.get("is_red_colour") is False:
                 colour = analysis.get("markup_colour", "unknown")
-                if not colour or colour.lower() in ("none", "unknown", "black", "black and white"):
-                    warnings.append(
-                        f"Red Pen markups appear to have no coloured annotations (appears {colour}) — "
-                        f"changes should be highlighted in colour on the AUSMAR base plan. Verify with Heath."
-                    )
+                issues.append(
+                    f"Red Pen markups are not in colour (appears {colour}) — "
+                    f"all changes must be highlighted in colour so drafting can identify them"
+                )
+            if analysis.get("customer_signed") is False:
+                issues.append(
+                    "Red Pen is not signed/initialled by the customer — "
+                    "customer sign-off is required on all Red Pen pages"
+                )
+            missing = analysis.get("missing_plan_types", [])
+            if missing and len(missing) > 0:
+                issues.append(
+                    f"Red Pen is missing required plan types: {', '.join(missing)}. "
+                    f"Full set required (Floor Plan, Elevations, Electrical, Floor Coverings, Concrete) "
+                    f"to confirm whether changes exist or not on each page."
+                )
             if analysis.get("has_dimensions_on_changes") is False:
                 warnings.append(
                     "Some changed areas on Red Pen may not have dimensions — "
                     "verify all structural changes are dimensioned"
-                )
-            if analysis.get("customer_signed") is False:
-                warnings.append("Red Pen may not be signed/initialled by customer")
-
-            missing = analysis.get("missing_plan_types", [])
-            if missing and len(missing) > 0:
-                # Warn about missing sections — never block for this
-                warnings.append(
-                    f"Red Pen may be missing coverage for: {', '.join(missing)}. "
-                    f"Per 1.0 naming, should include Floor Plan, Elevations, Electrical, Floor Coverings, Concrete."
                 )
 
         elif deposit_type == "STC":
