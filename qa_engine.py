@@ -1344,7 +1344,11 @@ def rename_classified_files(extract_dir: str, file_map: dict, classifications: d
 # ---------------------------------------------------------------------------
 # Check 3: GeoSite Verification (Vision) — uses file_map
 # ---------------------------------------------------------------------------
-def check_geosite(file_map: dict) -> dict:
+def check_geosite(file_map: dict, land_registered: bool | None = None) -> dict:
+    """
+    land_registered: True = land registered (full siting plan required).
+                     False/None = unregistered or unknown (lot/locality plan is acceptable).
+    """
     if "geosite" not in file_map:
         return {
             "issues": ["No GeoSite file found in submission — CRITICAL per 1.0 PSE Document Naming"],
@@ -1445,25 +1449,45 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         issues = []
         warnings = []
 
+        # Context-aware: only require full siting plan if land IS registered.
+        # If land is NOT registered (or unknown/None), a lot/locality plan is acceptable.
+        require_full_siting = (land_registered is True)
+
         if analysis.get("is_geosite_tool") is False:
-            # Only a hard block if we're certain — demoted to warning since LLM often
-            # misreads signed/scanned GeoSites as non-GeoSite (4/6 FPs were this)
-            warnings.append(
-                "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
-                "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
-            )
+            if require_full_siting:
+                warnings.append(
+                    "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
+                    "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
+                )
+            else:
+                warnings.append(
+                    "Document appears to be a lot/locality plan — acceptable as land is not yet registered. "
+                    "Once land registers, a full GeoSite siting plan will be required."
+                )
         if analysis.get("is_combined_with_contours") is True:
             warnings.append(
                 "GeoSite appears combined with contour data — Heath requires these to be separate documents. "
                 "Contours overlaid on GeoSite make it unreadable (real issue from S26TLS review)."
             )
         if analysis.get("house_sited_at_scale") is False:
-            issues.append("House not sited at scale on the lot — cannot verify fit")
+            if require_full_siting:
+                issues.append("House not sited at scale on the lot — cannot verify fit")
+            else:
+                warnings.append(
+                    "House not yet sited on lot plan — acceptable as land is not yet registered. "
+                    "Full GeoSite siting required once land registers."
+                )
         if analysis.get("setback_dimensions_shown") is False:
-            issues.append(
-                "Setback dimensions not shown on GeoSite — MUST have all setbacks "
-                "(front, rear, left side, right side) for drafting team"
-            )
+            if require_full_siting:
+                issues.append(
+                    "Setback dimensions not shown on GeoSite — MUST have all setbacks "
+                    "(front, rear, left side, right side) for drafting team"
+                )
+            else:
+                warnings.append(
+                    "No setback dimensions on lot plan — acceptable as land is not yet registered. "
+                    "Setbacks required on GeoSite once land registers."
+                )
         if analysis.get("text_readable") is False:
             warnings.append("Text on GeoSite is overlapping or hard to read — may cause issues for drafting")
         if analysis.get("customer_signatures_present") is False:
@@ -1765,24 +1789,24 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
         warnings = []
 
         if deposit_type == "NHP":
-            # Note: "is_red_colour" now means "has ANY coloured highlights" (green/yellow/blue/pink/red)
-            # Only flag if there are literally NO coloured markings
-            if analysis.get("is_red_colour") is False:
-                colour = analysis.get("markup_colour", "unknown")
-                if colour and colour.lower() not in ("none", "unknown", "black"):
-                    # Has colour but model said false — likely a calibration issue, don't flag
-                    pass
-                else:
-                    issues.append(
-                        f"Red Pen markups have no coloured annotations (appears {colour}) — "
-                        f"changes should be highlighted in colour on the AUSMAR base plan"
-                    )
+            # SOFTENED: Only hard-block if markups are NOT on an AUSMAR base plan.
+            # Colour, dimensions, coverage, signatures — all warnings only.
+            # Rationale: if ANY markups are present on an AUSMAR plan, accept it.
             if analysis.get("is_on_ausmar_base_plan") is False:
                 issues.append(
                     "Markups NOT on standard AUSMAR base plan — "
                     "must overlay AUSMAR plan, not consultant's own program "
                     "(real rejection reason from S26TLS)"
                 )
+
+            # All other checks are warnings only
+            if analysis.get("is_red_colour") is False:
+                colour = analysis.get("markup_colour", "unknown")
+                if not colour or colour.lower() in ("none", "unknown", "black", "black and white"):
+                    warnings.append(
+                        f"Red Pen markups appear to have no coloured annotations (appears {colour}) — "
+                        f"changes should be highlighted in colour on the AUSMAR base plan. Verify with Heath."
+                    )
             if analysis.get("has_dimensions_on_changes") is False:
                 warnings.append(
                     "Some changed areas on Red Pen may not have dimensions — "
@@ -1793,13 +1817,11 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
 
             missing = analysis.get("missing_plan_types", [])
             if missing and len(missing) > 0:
-                # Only warn if genuinely missing major sections, not minor ones
-                major_missing = [m for m in missing if m in ("floor_plan", "elevations")]
-                if major_missing:
-                    warnings.append(
-                        f"Red Pen may be missing coverage for: {', '.join(major_missing)}. "
-                        f"Per 1.0 naming, should include Floor Plan, Elevations, Electrical, Floor Coverings, Concrete."
-                    )
+                # Warn about missing sections — never block for this
+                warnings.append(
+                    f"Red Pen may be missing coverage for: {', '.join(missing)}. "
+                    f"Per 1.0 naming, should include Floor Plan, Elevations, Electrical, Floor Coverings, Concrete."
+                )
 
         elif deposit_type == "STC":
             if analysis.get("structural_changes_shown") is True:
@@ -2267,7 +2289,15 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
 
         # === Check 3: GeoSite Verification (Vision) ===
         _progress(40, "Analysing GeoSite with vision AI...")
-        geosite_result = check_geosite(file_map)
+        # Determine land registration status from Pre-Log notes or DB prelog notes
+        _land_registered = prelog.get("land_registered")  # from parse_prelog(notes)
+        if _land_registered is None and prelog_db:
+            _db_notes = (prelog_db.get("notes") or "").lower()
+            if "land registered: y" in _db_notes or "land registered: yes" in _db_notes:
+                _land_registered = True
+            elif "land registered: n" in _db_notes or "land registered: no" in _db_notes:
+                _land_registered = False
+        geosite_result = check_geosite(file_map, land_registered=_land_registered)
         results["checks"]["geosite_verification"] = {
             "issues": geosite_result["issues"],
             "warnings": geosite_result["warnings"],
