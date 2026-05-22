@@ -31,7 +31,7 @@ for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.confi
 db.init_db()
 
 
-def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email=""):
+def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes=""):
     """Background thread: runs the full QA review and updates status in DB."""
     try:
         db.update_pending_progress(pending_id, 5, "Extracting zip and checking structure...")
@@ -39,6 +39,7 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
         result = run_qa_review(
             filepath, filename, corrected_folder,
             progress_callback=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+            notes=notes,
         )
 
         if "error" in result and not result.get("checks"):
@@ -111,10 +112,13 @@ def api_review():
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, file.filename)
 
+    # Extract notes (Pre-Log info) from form
+    notes = request.form.get("notes", "").strip()
+
     # Launch background thread
     t = threading.Thread(
         target=_run_review_background,
-        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email),
+        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email, notes),
         daemon=True,
     )
     t.start()

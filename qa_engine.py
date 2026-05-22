@@ -56,6 +56,44 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Pre-Log Parser
+# ---------------------------------------------------------------------------
+def parse_prelog(notes: str) -> dict:
+    """Parse Pre-Log notes to extract key fields.
+    
+    Looks for patterns like:
+    - Land Registered (Y/N): NO
+    - NHP or STC: STC
+    - Estate & Stage: Aura P18 Stage 3
+    """
+    prelog = {
+        "land_registered": None,  # True/False/None
+        "nhp_or_stc": None,  # "NHP" or "STC"
+        "estate_stage": None,
+    }
+    
+    if not notes:
+        return prelog
+    
+    # Land Registered (Y/N)
+    match = re.search(r'Land Registered\s*\(Y/N\)\s*:\s*([YN])', notes, re.IGNORECASE)
+    if match:
+        prelog["land_registered"] = match.group(1).upper() == 'Y'
+    
+    # NHP or STC
+    match = re.search(r'NHP or STC\s*:\s*(NHP|STC)', notes, re.IGNORECASE)
+    if match:
+        prelog["nhp_or_stc"] = match.group(1).upper()
+    
+    # Estate & Stage
+    match = re.search(r'Estate & Stage\s*:\s*([^\n]+)', notes)
+    if match:
+        prelog["estate_stage"] = match.group(1).strip()
+    
+    return prelog
+
+
+# ---------------------------------------------------------------------------
 # OpenAI client (lazy init)
 # ---------------------------------------------------------------------------
 _client = None
@@ -120,7 +158,9 @@ CORE_REQUIRED = ["pse_doc", "pse_excel", "geosite", "itp", "deposit_receipt", "d
 # Soft required (missing = warning)
 SOFT_REQUIRED = ["pse_checklist"]
 # Conditionally expected (missing = warning if not explained)
-CONDITIONAL_EXPECTED = ["disclosure_plan", "pod_envelope"]
+# NOTE: Disclosure Plan, POD, Building Envelope are NOT flagged as missing — they are
+# job-specific (only required for registered lots) and the team knows when to include them.
+CONDITIONAL_EXPECTED = []
 
 
 # ---------------------------------------------------------------------------
@@ -1911,7 +1951,7 @@ def build_corrected_zip(extract_dir: str, deal_code: str, output_dir: str) -> st
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for fn in sorted(os.listdir(extract_dir)):
             fp = os.path.join(extract_dir, fn)
-            if os.path.isfile(fp) and not fn.startswith("."):
+            if os.path.isfile(fp) and not fn.startswith(".") and not fn.endswith(".md"):
                 zf.write(fp, fn)
 
     return zip_path
@@ -2026,8 +2066,12 @@ def cross_check_prelog(prelog: dict, review_results: dict) -> list[str]:
 # Main QA Review Pipeline (v2: Content-Based)
 # ---------------------------------------------------------------------------
 def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
-                  progress_callback=None) -> dict:
-    """Run the full QA review with content-based document classification."""
+                  progress_callback=None, notes: str = "") -> dict:
+    """Run the full QA review with content-based document classification.
+    
+    Args:
+        notes: Pre-Log information (e.g., Land Registered Y/N, NHP/STC, etc.)
+    """
 
     def _progress(pct, msg):
         if progress_callback:
@@ -2035,6 +2079,9 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                 progress_callback(pct, msg)
             except Exception:
                 pass
+
+    # Parse Pre-Log notes
+    prelog = parse_prelog(notes)
 
     results = {
         "zip_name": zip_name,
@@ -2044,6 +2091,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         "checks": {},
         "corrections_applied": [],
         "consultant_name": "",
+        "prelog": prelog,
     }
 
     extract_dir = tempfile.mkdtemp(prefix="ausmar_qa_")
