@@ -266,7 +266,11 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
     <div class="form-row"><div><label>Deal Code *</label><input id="pl-code" placeholder="e.g. S26TLS"></div><div><label>Consultant</label><input id="pl-consultant" placeholder="e.g. Ian Sullivan"></div></div>
     <div class="form-row"><div><label>Deposit Amount</label><select id="pl-amount"><option value="0">Select...</option><option value="2500">$2,500 (NHP)</option><option value="4000">$4,000 (STC)</option></select></div><div><label>Customer Name(s)</label><input id="pl-customers" placeholder="e.g. John & Jane Smith"></div></div>
     <div class="form-row full"><div><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Any relevant notes..."></textarea></div></div>
-    <div class="form-row full"><div><label>Attach Files (deposit receipt, ITP, licences, email)</label><input type="file" id="pl-files" multiple></div></div>
+    <div class="form-row full"><div>
+      <label>Attach Files — up to 10 (deposit receipt, ITP, licences, email, etc.)</label>
+      <input type="file" id="pl-files" multiple accept="*/*" style="display:block;margin-bottom:0.4rem" onchange="const el=document.getElementById('pl-file-list');if(el){const n=Array.from(this.files).map(f=>f.name);el.textContent=n.length?n.join(', '):''}">
+      <div id="pl-file-list" style="font-size:0.78rem;color:var(--g500);min-height:1rem"></div>
+    </div></div>
     <button class="btn btn-primary" onclick="submitPrelog()">Save Pre-Log</button>
   </div>
   <div class="card"><h2>Pre-Logged Jobs</h2><div id="prelogTable"></div></div>
@@ -281,7 +285,7 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
     <h3 style="margin-top:1rem">Add New Plan</h3>
     <div class="form-row"><div><label>Plan Name *</label><input id="np-name" placeholder="e.g. Baltimore 400"></div><div><label>Min Site Width (m) *</label><input id="np-width" type="number" step="0.1"></div></div>
     <div class="form-row"><div><label>Min Site Length (m) *</label><input id="np-length" type="number" step="0.1"></div><div><label>Total Area (m2)</label><input id="np-area" type="number" step="0.01"></div></div>
-    <div class="form-row"><div><label>Width incl Eaves (m)</label><input id="np-eaves" type="number" step="0.01"></div><div><label>House Width (m)</label><input id="np-hwidth" type="number" step="0.01"></div></div>
+    <div class="form-row"><div><label>House Width (m)</label><input id="np-hwidth" type="number" step="0.01"></div></div>
     <button class="btn btn-green" onclick="addPlan()">Add Plan</button>
   </div>
 </div>
@@ -298,6 +302,12 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
     </div>
     <div id="newCodeResult" style="margin-top:0.5rem"></div>
     <div id="codesTable" style="margin-top:1rem"></div>
+  </div>
+  <div class="card" style="border:1px solid #e53e3e22">
+    <h2 style="color:#e53e3e">Danger Zone</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Wipe all review history, reports, and feedback from the database. Plans, access codes, and pre-logs are kept. This cannot be undone.</p>
+    <button class="btn btn-red" onclick="wipeHistory()">Wipe All Review History &amp; Reports</button>
+    <div id="wipeResult" style="margin-top:0.5rem;font-size:0.85rem"></div>
   </div>
 </div>
 
@@ -683,9 +693,9 @@ async function deactivateCode(id){
 async function loadPlans(){
   const plans=await fetch('/api/plans').then(r=>r.json());
   if(!plans.length){$('plansTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No plans yet.</p>';return}
-  let h='<table class="tbl"><thead><tr><th>Plan</th><th>Min Width</th><th>Min Length</th><th>Area</th><th>Eaves Width</th><th>House Width</th><th></th></tr></thead><tbody>';
+  let h='<table class="tbl"><thead><tr><th>Plan</th><th>Min Width</th><th>Min Length</th><th>Area</th><th>House Width</th><th></th></tr></thead><tbody>';
   plans.forEach(p=>{
-    h+=`<tr><td><strong>${esc(p.name)}</strong></td><td>${p.min_width}m</td><td>${p.min_length}m</td><td>${p.total_area||'-'} m&sup2;</td><td>${p.width_incl_eaves||'-'}m</td><td>${p.house_width||'-'}m</td><td><button class="btn btn-sm btn-red" onclick="delPlan(${p.id})">Del</button></td></tr>`;
+    h+=`<tr><td><strong>${esc(p.name)}</strong></td><td>${p.min_width}m</td><td>${p.min_length}m</td><td>${p.total_area||'-'} m&sup2;</td><td>${p.house_width||'-'}m</td><td><button class="btn btn-sm btn-red" onclick="delPlan(${p.id})">Del</button></td></tr>`;
   });
   h+='</tbody></table>';
   $('plansTable').innerHTML=h;
@@ -693,8 +703,8 @@ async function loadPlans(){
 
 async function addPlan(){
   const name=$('np-name').value.trim();if(!name){alert('Plan name required');return}
-  await fetch('/api/plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,min_width:$('np-width').value||0,min_length:$('np-length').value||0,total_area:$('np-area').value||0,width_incl_eaves:$('np-eaves').value||0,house_width:$('np-hwidth').value||0})});
-  ['np-name','np-width','np-length','np-area','np-eaves','np-hwidth'].forEach(id=>$(id).value='');
+  await fetch('/api/plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,min_width:$('np-width').value||0,min_length:$('np-length').value||0,total_area:$('np-area').value||0,house_width:$('np-hwidth').value||0})});
+  ['np-name','np-width','np-length','np-area','np-hwidth'].forEach(id=>$(id).value='');
   loadPlans();
 }
 
@@ -718,6 +728,12 @@ async function loadPrelogs(){
 
 async function submitPrelog(){
   const code=$('pl-code').value.trim();if(!code){alert('Deal code required');return}
+  // Show selected file names
+  const fileListEl=document.getElementById('pl-file-list');
+  if(fileListEl){
+    const names=Array.from($('pl-files').files).map(f=>f.name);
+    fileListEl.textContent=names.length?names.join(', '):'';
+  }
   const fd=new FormData();
   fd.append('deal_code',code);
   fd.append('consultant_name',$('pl-consultant').value||currentUser?.consultant_name||'');
@@ -728,6 +744,22 @@ async function submitPrelog(){
   for(let i=0;i<files.length;i++)fd.append('file_'+i,files[i]);
   const r=await fetch('/api/prelogs',{method:'POST',body:fd});
   if(r.ok){['pl-code','pl-consultant','pl-customers','pl-notes'].forEach(id=>$(id).value='');$('pl-amount').value='0';$('pl-files').value='';loadPrelogs();alert('Pre-log saved.')}
+}
+
+async function wipeHistory(){
+  if(!currentUser?.is_admin){alert('Admin access required.');return}
+  if(!confirm('This will permanently delete ALL review history, reports, and feedback. Plans, access codes, and pre-logs will be kept.\n\nAre you sure?'))return;
+  const r=await fetch('/api/admin/wipe-history',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code})});
+  const d=await r.json();
+  const el=$('wipeResult');
+  if(d.ok){
+    el.style.color='#276749';
+    el.textContent='Done. All review history wiped.';
+    loadHistory();
+  } else {
+    el.style.color='#e53e3e';
+    el.textContent=d.error||'Wipe failed.';
+  }
 }
 </script>
 </body>
