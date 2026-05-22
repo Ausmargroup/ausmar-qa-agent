@@ -325,15 +325,19 @@ def api_add_prelog():
     if not data.get("deal_code"):
         return jsonify({"error": "deal_code required"}), 400
 
-    # Handle file uploads
+    # Handle file uploads — save to disk, record both filename and full path
     saved_files = []
+    saved_paths = []
     if request.files:
         for key in request.files:
             f = request.files[key]
             if f.filename:
-                save_path = os.path.join(app.config["PRELOG_FOLDER"], f"{data['deal_code']}_{f.filename}")
+                # Sanitise filename: strip path separators
+                safe_name = os.path.basename(f.filename).replace(" ", "_")
+                save_path = os.path.join(app.config["PRELOG_FOLDER"], f"{data['deal_code']}_{safe_name}")
                 f.save(save_path)
-                saved_files.append(f.filename)
+                saved_files.append(safe_name)
+                saved_paths.append(save_path)
 
     prelog_data = {
         "deal_code": data.get("deal_code", ""),
@@ -342,6 +346,7 @@ def api_add_prelog():
         "customer_names": data.get("customer_names", ""),
         "notes": data.get("notes", ""),
         "files": saved_files,
+        "file_paths": saved_paths,
     }
     prelog_id = db.save_prelog(prelog_data)
     return jsonify({"status": "ok", "prelog_id": prelog_id})

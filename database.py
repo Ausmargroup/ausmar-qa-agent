@@ -80,6 +80,7 @@ def init_db():
             customer_names TEXT DEFAULT '',
             notes TEXT DEFAULT '',
             files TEXT DEFAULT '[]',
+            file_paths TEXT DEFAULT '[]',
             status TEXT DEFAULT 'pending',
             matched_review_id INTEGER,
             created_at TEXT DEFAULT (datetime('now')),
@@ -109,6 +110,12 @@ def init_db():
         );
     """)
 
+    # Migrate: add file_paths column to prelogs if not exists
+    try:
+        conn.execute("ALTER TABLE prelogs ADD COLUMN file_paths TEXT DEFAULT '[]'")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     # Seed default plans if empty
     existing = conn.execute("SELECT COUNT(*) FROM plans").fetchone()[0]
     if existing == 0:
@@ -318,7 +325,7 @@ def get_false_positives():
 def save_prelog(data: dict) -> int:
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO prelogs (deal_code, consultant_name, deposit_amount, customer_names, notes, files, status) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO prelogs (deal_code, consultant_name, deposit_amount, customer_names, notes, files, file_paths, status) VALUES (?,?,?,?,?,?,?,?)",
         (
             data.get("deal_code", ""),
             data.get("consultant_name", ""),
@@ -326,6 +333,7 @@ def save_prelog(data: dict) -> int:
             data.get("customer_names", ""),
             data.get("notes", ""),
             json.dumps(data.get("files", [])),
+            json.dumps(data.get("file_paths", [])),
             "pending",
         ),
     )
@@ -361,6 +369,10 @@ def get_prelog(prelog_id):
         d["files"] = json.loads(d["files"]) if d["files"] else []
     except:
         d["files"] = []
+    try:
+        d["file_paths"] = json.loads(d["file_paths"]) if d.get("file_paths") else []
+    except:
+        d["file_paths"] = []
     return d
 
 
@@ -375,6 +387,10 @@ def find_prelog_by_deal_code(deal_code):
         d["files"] = json.loads(d["files"]) if d["files"] else []
     except:
         d["files"] = []
+    try:
+        d["file_paths"] = json.loads(d["file_paths"]) if d.get("file_paths") else []
+    except:
+        d["file_paths"] = []
     return d
 
 

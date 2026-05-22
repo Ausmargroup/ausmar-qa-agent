@@ -2152,6 +2152,40 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         # === Detect deposit type from content ===
         results["deposit_type"] = detect_deposit_type(file_map, files)
 
+        # === Pre-Log File Merge ===
+        # Look up Pre-Log by deal code. If files were uploaded there (ITP, receipt, licence),
+        # copy any that are missing from the zip into extract_dir so they appear in the
+        # corrected zip and don't block the submission as "missing".
+        _progress(28, "Checking Pre-Log for supplementary files...")
+        prelog_db = db.find_prelog_by_deal_code(deal_code)
+        prelog_merged_docs = []
+        if prelog_db and prelog_db.get("file_paths"):
+            for fp in prelog_db["file_paths"]:
+                if not os.path.isfile(fp):
+                    continue
+                fn = os.path.basename(fp)
+                dest = os.path.join(extract_dir, fn)
+                # Only copy if a file with that name isn't already there
+                if not os.path.exists(dest):
+                    shutil.copy2(fp, dest)
+                    prelog_merged_docs.append(fn)
+                    results["corrections_applied"].append(f"Merged from Pre-Log: {fn}")
+            if prelog_merged_docs:
+                # Re-classify now that we have extra files
+                new_files = []
+                for fn in prelog_merged_docs:
+                    fp2 = os.path.join(extract_dir, fn)
+                    ext = os.path.splitext(fn)[1].lower()
+                    new_files.append({"name": fn, "path": fp2, "ext": ext, "size": os.path.getsize(fp2)})
+                extra_result = classify_all_files(new_files)
+                # Merge into existing file_map (don't overwrite already-classified docs)
+                for doc_type, finfo in extra_result["file_map"].items():
+                    if doc_type not in file_map:
+                        file_map[doc_type] = finfo
+                        classifications[finfo["name"]] = extra_result["classifications"].get(finfo["name"], {})
+                results["prelog_merged_files"] = prelog_merged_docs
+                results["prelog_id"] = prelog_db["id"]
+
         # === Check 2: Document Completeness (content-based) ===
         _progress(30, "Checking document completeness...")
         completeness = check_document_completeness(file_map, unclassified)
@@ -2402,7 +2436,8 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
 
         # === Cross-check pre-log ===
         _progress(92, "Cross-checking pre-log data...")
-        prelog = db.find_prelog_by_deal_code(deal_code)
+        # Use already-fetched prelog_db from merge step (avoid double DB lookup)
+        prelog = prelog_db if "prelog_db" in dir() else db.find_prelog_by_deal_code(deal_code)
         prelog_notes = []
         if prelog:
             prelog_notes = cross_check_prelog(prelog, results)
