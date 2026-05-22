@@ -669,11 +669,11 @@ CONTENT_FINGERPRINTS = [
         "min_matches": 2,
         "extensions": [".pdf", ".jpg", ".jpeg", ".png"],
     }),
-    # PSE Checklist
+    # PSE Checklist — requires specific PSE checklist language, not generic checklist words
     ("pse_checklist", {
-        "keywords": ["checklist", "pse checklist", "document checklist",
-                      "yes/no", "yes / no", "completed"],
-        "min_matches": 2,
+        "keywords": ["pse checklist", "document checklist", "1.0 pse document naming",
+                      "pse documents list", "document list", "document naming"],
+        "min_matches": 1,
         "extensions": [".pdf"],
     }),
     # Deposit Receipt
@@ -831,6 +831,7 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Run filename hints first for .docx
         for patterns, doc_type in [
             (["intention to purchase", "itp"], "itp"),
+            (["pse checklist", "checklist"], "pse_checklist"),
             (["provisional sales estimate", "pse"], "pse_doc"),
             (["disclosure plan", "survey plan"], "disclosure_plan"),
             (["promo", "acknowledgement", "acknowledgment"], "promo_ack"),
@@ -838,6 +839,10 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         ]:
             if any(p in fn_lower for p in patterns):
                 return doc_type, 0.75
+        # Also check text content for PSE Checklist .docx
+        if text_lower and ("pse documents" in text_lower or "provisional sales estimate documents" in text_lower
+                           or "document checklist" in text_lower):
+            return "pse_checklist", 0.85
         # Fall through to text-based classification below with extracted text
 
     # --- Tier 1a: Spreadsheet files → PSE Excel ---
@@ -866,8 +871,42 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     if ext == ".pdf" and text_lower:
         # Priority override: PSE Checklist contains keywords for MANY doc types
         # (it lists them all). If the filename says "checklist", trust that.
-        if "checklist" in fn_lower and "pse checklist" in text_lower:
+        # Also catch "Site Visit Checklist" which is a different form.
+        _checklist_text_signals = ["pse checklist", "document checklist", "1.0 pse document naming",
+                                    "pse documents list", "document list", "document naming"]
+        if "checklist" in fn_lower and any(s in text_lower for s in _checklist_text_signals):
             return "pse_checklist", 1.0
+        # Site Visit Checklist — trust the filename
+        if "site visit" in fn_lower and "checklist" in fn_lower:
+            return "pse_checklist", 0.85
+
+        # Priority override: ITP — "INTENTION TO PURCHASE" as a heading is definitive.
+        # The ITP Acreage version mentions "provisional sales estimate" in the payment
+        # section, which would otherwise cause pse_doc to win. ITP heading beats that.
+        if "intention to purchase" in text_lower and (
+            "purchaser" in text_lower or "purchaser details" in text_lower
+        ):
+            return "itp", 0.95
+
+        # Priority override: Pool Form — POOL DECLARATION heading is definitive.
+        # Pool forms contain "yes/no" and "completed" which otherwise match pse_checklist.
+        if "pool declaration" in text_lower or (
+            "swimming pool" in text_lower and "declaration" in text_lower
+        ):
+            return "pool_form", 0.95
+
+        # Priority override: Advantage / Promo Ack — filename + content.
+        # These contain "advantage" and "acknowledgement" which is unambiguous.
+        if ("advantage" in fn_lower or "promo" in fn_lower or "acknowledgement" in fn_lower) and (
+            "advantage" in text_lower or "super saver" in text_lower or "promotional" in text_lower
+        ):
+            return "promo_ack", 0.95
+
+        # Priority override: Site Visit Checklist — not a GeoSite plan.
+        if "site visit checklist" in text_lower or (
+            "site visit" in text_lower and "checklist" in text_lower
+        ):
+            return "pse_checklist", 0.85
 
         best_type = None
         best_score = 0
@@ -882,16 +921,30 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
             confidence = min(1.0, 0.5 + best_score * 0.15)
             return best_type, confidence
 
+    # --- Tier 1c: Known non-submission file exclusions ---
+    # These files are sometimes included in zips but are NOT submission documents.
+    # Return None so they end up in 'unclassified' rather than being misidentified.
+    EXCLUDE_FILENAME_SIGNALS = [
+        "8_step", "8 step", "process_timeline", "process timeline",
+        "matters_of_interest", "matters of interest",
+        "vegetation_management", "vegetation management",
+        "generalmap", "general map",
+        "zoning map", "council map",
+        "ausmar_advantage",  # marketing doc - but Advantage Ack is classified by content above
+    ]
+    if any(s in fn_lower for s in EXCLUDE_FILENAME_SIGNALS):
+        return None, 0.0  # Leave unclassified
+
     # --- Tier 2: Filename hints (for scanned PDFs and images) ---
     # These patterns are based on real AUSMAR consultant naming conventions.
     # Confidence is 0.75 — strong enough to use, but vision can override.
     FILENAME_HINTS = [
         # ITP
         (["intention to purchase", "itp form", "itp -", "- itp"], "itp"),
-        # PSE Doc
-        (["provisional sales estimate", "pse doc", "pse -", "- pse", "pse signed"], "pse_doc"),
+        # PSE Doc — also match bare 'pse' filename (scanned PSE PDFs often named PSE.pdf)
+        (["provisional sales estimate", "pse doc", "pse -", "- pse", "pse signed", "pse.pdf"], "pse_doc"),
         # GeoSite
-        (["geosite", "geo site", "geo plan"], "geosite"),
+        (["geosite", "geo site", "geo plan", "geosite plan"], "geosite"),
         # Red Pen
         (["red pen", "redpen", "mark up", "markup", "red mark"], "red_pen"),
         # Pool Form
@@ -923,7 +976,7 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Covenant Guidelines
         (["design guidelines", "covenant guidelines", "covenant doc"], "covenant_guidelines"),
         # PSE Checklist
-        (["pse checklist", "checklist"], "pse_checklist"),
+        (["pse checklist", "document checklist", "pse documents list"], "pse_checklist"),
         # Discount Approval
         (["discount approval", "discount form"], "discount_approval"),
         # Owner Supplied
@@ -934,6 +987,12 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     for patterns, doc_type in FILENAME_HINTS:
         if any(p in fn_lower for p in patterns):
             return doc_type, 0.75
+
+    # Special case: bare filename is exactly 'pse' (e.g. PSE.pdf, pse.pdf)
+    # These are scanned PSE Doc PDFs with no text content.
+    fn_stem = Path(file_info["name"]).stem.lower().strip()
+    if fn_stem == "pse" and ext == ".pdf":
+        return "pse_doc", 0.75
 
     # --- Image files with no filename hint → vision ---
     if ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
@@ -973,6 +1032,9 @@ If it's floor plans with red/coloured markings showing changes, classify as "red
 If it's a building envelope or POD plan, classify as "pod_envelope".
 If it's a deposit/payment receipt, classify as "deposit_receipt".
 If it's a contour/topographic survey, classify as "contour_survey".
+If it's a swimming pool declaration form, classify as "pool_form".
+If it's an AUSMAR process timeline, step guide, or marketing document, classify as "unknown".
+If it's a Matters of Interest report, vegetation management report, or council zoning map, classify as "unknown".
 If it doesn't match any type, respond with "unknown".
 
 Respond with ONLY a JSON object: {{"doc_type": "type_key", "confidence": 0.0-1.0, "reason": "brief reason"}}"""
@@ -1512,7 +1574,10 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
 
     home_design = analysis.get("home_design", "") or ""
 
-    plans = db.get_all_plans()
+    try:
+        plans = db.get_all_plans()
+    except Exception:
+        plans = []
     matched_plan = None
 
     for p in plans:
@@ -2157,7 +2222,10 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         # copy any that are missing from the zip into extract_dir so they appear in the
         # corrected zip and don't block the submission as "missing".
         _progress(28, "Checking Pre-Log for supplementary files...")
-        prelog_db = db.find_prelog_by_deal_code(deal_code)
+        try:
+            prelog_db = db.find_prelog_by_deal_code(deal_code)
+        except Exception:
+            prelog_db = None
         prelog_merged_docs = []
         if prelog_db and prelog_db.get("file_paths"):
             for fp in prelog_db["file_paths"]:
@@ -2437,7 +2505,10 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
         # === Cross-check pre-log ===
         _progress(92, "Cross-checking pre-log data...")
         # Use already-fetched prelog_db from merge step (avoid double DB lookup)
-        prelog = prelog_db if "prelog_db" in dir() else db.find_prelog_by_deal_code(deal_code)
+        try:
+            prelog = prelog_db if "prelog_db" in dir() else db.find_prelog_by_deal_code(deal_code)
+        except Exception:
+            prelog = None
         prelog_notes = []
         if prelog:
             prelog_notes = cross_check_prelog(prelog, results)
