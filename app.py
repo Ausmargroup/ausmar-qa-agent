@@ -16,19 +16,29 @@ from qa_engine import run_qa_review
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 
-# Persistent data dir. On Railway a Volume is mounted at /data and the
-# AUSMAR_DATA_DIR env var points here, so SQLite + corrected_zips + prelog_uploads
-# survive container restarts and redeploys. Falls back to ./data for local dev.
-_DATA_DIR = os.environ.get("AUSMAR_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+# Persistent data dir. Falls back to ./data if the Volume path is unavailable.
+def _make_data_dir(requested):
+    try:
+        os.makedirs(requested, exist_ok=True)
+        # Verify it's actually writable
+        test = os.path.join(requested, '.write_test')
+        with open(test, 'w') as f:
+            f.write('ok')
+        os.remove(test)
+        return requested
+    except Exception:
+        fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+
+_requested_data_dir = os.environ.get("AUSMAR_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
+_DATA_DIR = _make_data_dir(_requested_data_dir)
 app.config["UPLOAD_FOLDER"] = os.path.join(_DATA_DIR, "uploads")
 app.config["CORRECTED_FOLDER"] = os.path.join(_DATA_DIR, "corrected_zips")
 app.config["PRELOG_FOLDER"] = os.path.join(_DATA_DIR, "prelog_uploads")
 
 for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"]]:
-    try:
-        os.makedirs(d, exist_ok=True)
-    except Exception:
-        pass
+    os.makedirs(d, exist_ok=True)
 
 # Lazy DB init — called on first real request so a locked/corrupt Volume never blocks startup.
 _db_ready = False
