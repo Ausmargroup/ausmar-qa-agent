@@ -10,8 +10,14 @@ from datetime import datetime
 
 # DATA_DIR is the persistent directory. On Railway we mount a Volume at /data.
 # Falls back to ./data inside the project for local dev.
-DATA_DIR = os.environ.get("AUSMAR_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
-os.makedirs(DATA_DIR, exist_ok=True)
+_requested_data_dir = os.environ.get("AUSMAR_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
+try:
+    os.makedirs(_requested_data_dir, exist_ok=True)
+    DATA_DIR = _requested_data_dir
+except Exception:
+    # Volume gone or permission denied — fall back to local ./data
+    DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+    os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "qa_agent.db")
 
 
