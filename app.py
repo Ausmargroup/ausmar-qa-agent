@@ -146,6 +146,21 @@ def api_review_status(review_id):
             result = json.loads(pending["result"]) if pending["result"] else {}
         except (json.JSONDecodeError, TypeError):
             result = {}
+        # If verdict_data is missing, reconstruct from DB so frontend never shows UNKNOWN.
+        if not result.get("verdict_data") and pending.get("review_id"):
+            try:
+                saved = db.get_review(pending["review_id"])
+                if saved and saved.get("verdict"):
+                    result["verdict_data"] = {
+                        "verdict": saved["verdict"],
+                        "verdict_reason": saved.get("verdict_reason", ""),
+                        "critical_issues": saved.get("critical_issues", []),
+                        "warnings": saved.get("warnings", []),
+                        "heath_review_note": saved.get("heath_note", ""),
+                        "consultant_feedback_email": saved.get("consultant_email", ""),
+                    }
+            except Exception:
+                pass
         response["result"] = result
         response["db_review_id"] = pending.get("review_id")
     elif pending["status"] == "failed":
