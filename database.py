@@ -122,17 +122,25 @@ def init_db():
         conn.commit()
     except Exception:
         pass  # Column already exists
-    # Seed default plans if empty
-    existing = conn.execute("SELECT COUNT(*) FROM plans").fetchone()[0]
-    if existing == 0:
-        conn.executemany(
-            "INSERT INTO plans (name, min_width, min_length, total_area, width_incl_eaves, house_width) VALUES (?,?,?,?,?,?)",
-            [
-                ("Clearwater 225", 12.3, 29.1, 225.95, 11.98, 0),
-                ("Clearwater 245", 13.0, 29.2, 245.51, 12.60, 0),
-                ("Narrabeen", 10.0, 25.0, 212.33, 0, 9.24),
-            ],
-        )
+    # Seed default plans — INSERT OR IGNORE so re-runs never duplicate
+    conn.executemany(
+        "INSERT OR IGNORE INTO plans (name, min_width, min_length, total_area, width_incl_eaves, house_width) VALUES (?,?,?,?,?,?)",
+        [
+            # Clearwater / Narrabeen originals
+            ("Clearwater 225",          12.3,  29.1,  225.95, 11.98,  0.0),
+            ("Clearwater 245",          13.0,  29.2,  245.51, 12.60,  0.0),
+            ("Narrabeen",               10.0,  25.0,  212.33,  0.0,   9.24),
+            # Washington Series
+            ("Washington 285 Traditional", 12.5, 17.64, 285.1,  12.71, 11.81),
+            ("Washington 315 Traditional", 12.5, 25.0,  315.6,  12.5,  11.0),
+            ("Washington 340 Barn",        12.5, 25.0,  348.7,  12.5,  12.5),
+            ("Washington 340 Coastal",     12.5, 25.0,  339.5,  11.54, 11.0),
+            ("Washington 340 Hamptons",    12.5, 34.4,  339.5,  11.9,  11.0),
+            ("Washington 340 Modern",      12.5, 25.0,  340.6,  11.0,  11.0),
+            ("Washington 340 Palm Valley", 12.5, 25.0,  350.0,  11.8,  11.8),
+            ("Washington 340 Traditional", 12.5, 25.0,  339.5,  11.0,  11.0),
+        ],
+    )
     conn.commit()
     conn.close()
 
