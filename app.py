@@ -25,14 +25,29 @@ app.config["CORRECTED_FOLDER"] = os.path.join(_DATA_DIR, "corrected_zips")
 app.config["PRELOG_FOLDER"] = os.path.join(_DATA_DIR, "prelog_uploads")
 
 for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"]]:
-    os.makedirs(d, exist_ok=True)
+    try:
+        os.makedirs(d, exist_ok=True)
+    except Exception:
+        pass
 
-# Initialize database — wrapped so a locked/corrupt DB never crashes startup
-try:
-    db.init_db()
-except Exception as _db_init_err:
-    import sys
-    print(f"[WARN] db.init_db() failed at startup: {_db_init_err}", file=sys.stderr)
+# Lazy DB init — called on first real request so a locked/corrupt Volume never blocks startup.
+_db_ready = False
+
+def _ensure_db():
+    global _db_ready
+    if not _db_ready:
+        try:
+            db.init_db()
+            _db_ready = True
+        except Exception as e:
+            import sys
+            print(f"[WARN] db.init_db() failed: {e}", file=sys.stderr)
+
+
+# ---- Health (no DB touch — used by Railway healthcheck) ----
+@app.route("/health")
+def health():
+    return "ok", 200
 
 
 def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes=""):
@@ -93,12 +108,14 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
 # ---- Pages ----
 @app.route("/")
 def index():
+    _ensure_db()
     return render_template("index.html")
 
 
 # ---- Review API (async) ----
 @app.route("/api/review", methods=["POST"])
 def api_review():
+    _ensure_db()
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file = request.files["file"]
