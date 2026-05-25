@@ -126,7 +126,7 @@ def init_db():
     conn.executemany(
         "INSERT OR IGNORE INTO plans (name, min_width, min_length, total_area, width_incl_eaves, house_width) VALUES (?,?,?,?,?,?)",
         [
-            # Clearwater / Narrabeen originals
+            # Originals
             ("Clearwater 225",          12.3,  29.1,  225.95, 11.98,  0.0),
             ("Clearwater 245",          13.0,  29.2,  245.51, 12.60,  0.0),
             ("Narrabeen",               10.0,  25.0,  212.33,  0.0,   9.24),
@@ -139,6 +139,81 @@ def init_db():
             ("Washington 340 Modern",      12.5, 25.0,  340.6,  11.0,  11.0),
             ("Washington 340 Palm Valley", 12.5, 25.0,  350.0,  11.8,  11.8),
             ("Washington 340 Traditional", 12.5, 25.0,  339.5,  11.0,  11.0),
+            # Aspen Series
+            ("ASPEN 230", 12.5, 25.0, 224.5, 11.5, 11.5),
+            ("ASPEN 281", 12.5, 25.0, 250.4, 11.5, 11.5),
+            ("Aspen 255 Traditional Streetscape", 12.5, 25.0, 255.1, 11.5, 11.5),
+            ("Aspen 281", 12.5, 25.0, 274.4, 11.5, 11.5),
+            ("Aspen 281 Hamptons", 12.5, 25.0, 276.1, 11.5, 11.5),
+            ("Aspen 281 Palm Valley Streetscape", 12.5, 25.0, 278.6, 11.5, 11.5),
+            # Clearwater Series (facades)
+            ("CLEARWATER 245 Barn Streetscape", 12.5, 20.0, 244.4, 12.6, 12.6),
+            ("CLEARWATER 245 TRADITIONAL STREETSCAPE", 12.5, 20.0, 245.5, 12.6, 12.6),
+            ("Clearwater 209 Traditional Streetscape", 12.3, 20.0, 204.4, 11.98, 11.98),
+            ("Clearwater 225 Traditional Streetscape", 12.3, 20.142, 225.4, 11.5, 11.5),
+            ("Clearwater 245 Coastal Streetscape", 15.0, 20.0, 247.1, 14.89, 14.89),
+            ("Clearwater 245 Hamptons Streetscape", 10.0, 23.8, 244.4, 12.0, 11.5),
+            ("Clearwater 245 Modern Streetscape", 10.0, 15.0, 246.1, 10.0, 10.0),
+            ("Clearwater 245 Palm Valley Streetscape", 12.5, 30.0, 245.5, 10.0, 10.0),
+            # Island Bay Series
+            ("Island Bay 235 Traditional Streetscape", 14.0, 21.4, 254.1, 14.0, 14.0),
+            ("Island Bay 250 Traditional Streetscape", 10.0, 28.0, 244.5, 10.0, 10.0),
+            ("Island Bay 290", 12.5, 30.0, 291.4, 16.8, 16.8),
+            ("Island Bay 290 Barn Streetscape", 12.5, 30.0, 240.5, 14.2, 14.2),
+            ("Island Bay 290 Coastal Streetscape", 18.0, 30.0, 257.2, 18.4, 18.0),
+            ("Island Bay 290 Modern Streetscape", 15.0, 23.0, 224.6, 13.0, 13.0),
+            ("Island Bay 290 Palm Valley Streetscape", 12.5, 30.0, 290.8, 18.0, 18.0),
+            ("Island Bay 290 Traditional Streetscape", 12.5, 28.0, 283.6, 11.5, 11.5),
+            # Long Beach Series
+            ("LONG BEACH 300 COASTAL STREETSCAPE", 8.0, 32.0, 302.9, 23.11, 23.11),
+            ("Long Beach 260", 12.5, 20.0, 260.2, 11.7, 11.5),
+            ("Long Beach 285 Traditional", 12.5, 30.0, 224.1, 22.06, 22.06),
+            ("Long Beach 300 Modern Streetscape", 8.0, 23.25, 306.9, 12.0, 12.0),
+            # Miami Series
+            ("Miami 250 Traditional Streetscape", 12.5, 25.0, 250.8, 12.5, 12.5),
+            ("Miami 272", 16.0, 21.0, 271.4, 16.0, 16.0),
+            ("Miami 290 Barn Streetscape", 10.0, 21.71, 285.5, 15.9, 15.9),
+            ("Miami 290 Hamptons Streetscape", 16.0, 19.0, 297.1, 17.21, 16.0),
+            ("Miami 290 Modern Streetscape", 10.0, 19.0, 292.5, 16.0, 16.0),
+            ("Miami 290 Palm Valley", 18.0, 14.77, 292.5, 22.1, 22.1),
+            # Orlando Series
+            ("ORLANDO 300 TRADITIONAL STREETSCAPE", 12.5, 35.6, 296.6, 11.1, 11.1),
+            ("ORLANDO 330 COASTAL STREETSCAPE", 12.5, 21.56, 330.2, 11.9, 11.5),
+            ("ORLANDO 330 MODERN STREETSCAPE", 12.5, 23.0, 330.2, 11.5, 11.5),
+            ("ORLANDO 330 TRADITIONAL STREETSCAPE", 12.5, 21.56, 330.2, 11.9, 11.9),
+            ("Orlando 275 Traditional Streetscape", 10.5, 25.0, 275.0, 12.0, 10.5),
+            ("Orlando 330 Barn", 12.5, 28.0, 330.2, 11.78, 11.5),
+            ("Orlando 330 Hamptons Streetscape", 12.5, 28.0, 331.5, 11.9, 11.9),
+            ("Orlando 330 Palm Valley Streetscape", 12.5, 29.0, 331.2, 10.3, 10.3),
+            # Pasadena Series
+            ("Palm Bay 174 Traditional Streetscape", 12.5, 19.2, 173.4, 11.1, 11.1),
+            ("Pasadena 205", 12.5, 28.0, 205.4, 12.16, 11.7),
+            ("Pasadena 220 Traditional Streetscape", 12.5, 28.0, 220.3, 12.5, 12.5),
+            ("Pasadena 235 Barn", 14.0, 28.0, 257.6, 11.5, 11.5),
+            ("Pasadena 235 Coastal Streetscape", 14.0, 28.0, 235.1, 11.8, 11.5),
+            ("Pasadena 235 Hamptons Streetscape", 14.0, 22.44, 253.3, 11.99, 11.5),
+            ("Pasadena 235 Modern Streetscape", 14.0, 28.0, 235.2, 14.0, 14.0),
+            ("Pasadena 235 Traditional Streetscape", 14.0, 28.0, 255.2, 11.5, 11.5),
+            # Portland Series
+            ("Portland 175 Traditional Streetscape", 12.0, 25.0, 174.1, 14.5, 13.9),
+            ("Portland 194", 12.5, 27.0, 165.2, 18.0, 17.53),
+            ("Portland 204 Coastal Streetscape", 12.9, 11.5, 202.4, 12.0, 11.5),
+            ("Portland 204 Hamptons Streetscape", 12.9, 21.94, 206.1, 11.73, 11.5),
+            ("Portland 204 Traditional Streetscape", 12.9, 21.76, 205.5, 12.9, 11.5),
+            # Savannah Series
+            ("Savannah 205", 12.5, 21.1, 205.2, 11.79, 11.5),
+            ("Savannah 215", 12.5, 21.15, 215.1, 11.99, 11.5),
+            ("Savannah 235 Coastal Streetscape", 12.0, 28.0, 254.1, 12.0, 11.5),
+            ("Savannah 235 Hamptons Streetscape", 12.5, 28.0, 250.2, 11.99, 11.5),
+            # Tampa Bay Series
+            ("Tampa Bay 185", 12.5, 25.0, 184.5, 12.5, 12.5),
+            ("Tampa Bay 200", 12.5, 24.9, 200.6, 11.5, 11.5),
+            ("Tampa Bay 200 Coastal Streetscape", 12.5, 27.82, 194.5, 11.1, 11.1),
+            ("Tampa Bay 200 Hamptons Streetscape", 12.5, 28.0, 200.9, 11.1, 11.1),
+            ("Tampa Bay 200 Modern Streetscape", 12.5, 28.0, 148.7, 11.7, 11.7),
+            ("Tampa Bay 200 Palm Valley Streetscape", 12.5, 24.6, 199.5, 11.5, 11.5),
+            ("Tampa Bay 200 Traditional Streetscape", 12.5, 27.2, 200.4, 11.1, 11.1),
+            ("Tampa Bay 174 Traditional Streetscape", 12.5, 19.2, 173.4, 11.1, 11.1),
         ],
     )
     conn.commit()
