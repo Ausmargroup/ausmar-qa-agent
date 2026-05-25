@@ -403,3 +403,11 @@ def api_wipe_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route("/api/debug/stats")
+def api_debug_stats():
+    import traceback as tb
+    try:
+        return jsonify(db.get_review_stats())
+    except Exception as e:
+        return jsonify({"error": str(e), "traceback": tb.format_exc()}), 500
