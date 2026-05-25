@@ -27,8 +27,12 @@ app.config["PRELOG_FOLDER"] = os.path.join(_DATA_DIR, "prelog_uploads")
 for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"]]:
     os.makedirs(d, exist_ok=True)
 
-# Initialize database
-db.init_db()
+# Initialize database — wrapped so a locked/corrupt DB never crashes startup
+try:
+    db.init_db()
+except Exception as _db_init_err:
+    import sys
+    print(f"[WARN] db.init_db() failed at startup: {_db_init_err}", file=sys.stderr)
 
 
 def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes=""):
