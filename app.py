@@ -262,6 +262,7 @@ def api_get_feedback(review_id):
 # ---- Plans ----
 @app.route("/api/plans")
 def api_plans():
+    _ensure_db()
     return jsonify(db.get_all_plans())
 
 
@@ -290,6 +291,7 @@ def api_delete_plan(plan_id):
 # ---- Access Codes ----
 @app.route("/api/access-codes")
 def api_access_codes():
+    _ensure_db()
     return jsonify(db.get_all_access_codes())
 
 
@@ -311,6 +313,7 @@ def api_deactivate_access_code(code_id):
 
 @app.route("/api/access-codes/validate", methods=["POST"])
 def api_validate_access_code():
+    _ensure_db()
     data = request.json or {}
     code = data.get("code", "").strip().upper()
     if not code:
