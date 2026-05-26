@@ -509,12 +509,17 @@ function renderResults(d){
 
   // Feedback
   if(rid){
-    h+=`<div class="card"><h2>Flag False Positives</h2><p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">If any issue above is wrong, flag it so the engine can improve.</p>`;
+    // Store issues in a global array so onclick handlers can reference by index
+    // (avoids JSON.stringify inside onclick attr which breaks on double-quoted strings)
+    window._fbIssues=window._fbIssues||[];
+    window._fbRid=rid;
     const allIss=[...(v.critical_issues||[]),...(v.warnings||[])];
+    window._fbIssues=allIss.slice();
+    h+=`<div class="card"><h2>Flag False Positives</h2><p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">If any issue above is wrong, flag it so the engine can improve.</p>`;
     allIss.forEach((iss,idx)=>{
-      h+=`<div class="fb-item" id="fbi-${idx}"><div style="flex:1;font-size:0.85rem">${esc(iss)}</div><div class="fb-btns"><button class="btn btn-sm btn-outline" onclick="sendFb(${rid},'qa',${JSON.stringify(iss)},true,${idx})">&#10003; Correct</button><button class="btn btn-sm btn-red" onclick="promptFbNote(${rid},'qa',${JSON.stringify(iss)},${idx})">&#10007; False Positive</button></div></div>`;
+      h+=`<div class="fb-item" id="fbi-${idx}"><div style="flex:1;font-size:0.85rem">${esc(iss)}</div><div class="fb-btns"><button class="btn btn-sm btn-outline" onclick="sendFbIdx(${idx},true)">&#10003; Correct</button><button class="btn btn-sm btn-red" onclick="sendFbIdx(${idx},false)">&#10007; False Positive</button></div></div>`;
     });
-    h+=`<div style="margin-top:0.75rem"><label>General notes for this review</label><textarea id="fbGeneral" rows="2" placeholder="Any additional notes..."></textarea><button class="btn btn-sm btn-outline" style="margin-top:0.4rem" onclick="sendGeneralFb(${rid})">Save Notes</button></div></div>`;
+    h+=`<div style="margin-top:0.75rem"><label>General notes for this review</label><textarea id="fbGeneral" rows="2" placeholder="Any additional notes..."></textarea><button class="btn btn-sm btn-outline" style="margin-top:0.4rem" onclick="sendGeneralFb(window._fbRid)">Save Notes</button></div></div>`;
   }
 
   h+=`<button class="btn btn-primary" onclick="resetReview()" style="margin-top:0.5rem">New Review</button>`;
@@ -542,12 +547,26 @@ function resetReview(){
 }
 
 // ============ FEEDBACK ============
-async function sendFb(rid,check,text,correct,idx){
-  const notes=correct?'':prompt('Why is this a false positive?')||'';
-  await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:check,issue_text:text,is_correct:correct,notes,submitted_by:currentUser?.consultant_name||'staff'})});
-  const el=$(`fbi-${idx}`);if(el){el.style.opacity='0.4';el.innerHTML=`<div style="flex:1;font-size:0.8rem">${esc(text)} — <strong>${correct?'Confirmed correct':'Marked false positive'}</strong></div>`}
+async function sendFbIdx(idx,correct){
+  const rid=window._fbRid;
+  const text=(window._fbIssues||[])[idx]||'';
+  if(!rid||!text)return;
+  const notes=correct?'':prompt('Why is this a false positive? (optional)')||'';
+  const el=$(`fbi-${idx}`);
+  if(el){el.style.opacity='0.5';el.querySelector('button') && (el.querySelector('.fb-btns').innerHTML='<span style="font-size:0.75rem;color:var(--g500)">Saving...</span>');}
+  try{
+    const r=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:'qa',issue_text:text,is_correct:correct,notes,submitted_by:currentUser?.consultant_name||'staff'})});
+    if(r.ok&&el){el.style.opacity='0.4';el.innerHTML=`<div style="flex:1;font-size:0.8rem">${esc(text)} — <strong style="color:${correct?'var(--grn)':'var(--acc)'}">${correct?'✓ Confirmed correct':'✗ Marked false positive'}</strong></div>`;}
+    else if(el){el.querySelector('.fb-btns').innerHTML='<span style="font-size:0.75rem;color:var(--acc)">Error saving</span>';}
+  }catch(e){if(el){el.querySelector('.fb-btns').innerHTML='<span style="font-size:0.75rem;color:var(--acc)">Error saving</span>';}}
 }
-function promptFbNote(rid,check,text,idx){sendFb(rid,check,text,false,idx)}
+async function sendFb(rid,check,text,correct,idx){
+  // Legacy wrapper — kept for any existing calls
+  window._fbRid=rid;
+  if(window._fbIssues)window._fbIssues[idx]=text;
+  await sendFbIdx(idx,correct);
+}
+function promptFbNote(rid,check,text,idx){sendFbIdx(idx,false);}
 async function sendGeneralFb(rid){
   const notes=$('fbGeneral').value.trim();if(!notes)return;
   await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({review_id:rid,check_name:'general',issue_text:'General note',is_correct:true,notes,submitted_by:currentUser?.consultant_name||'staff'})});

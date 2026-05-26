@@ -213,6 +213,8 @@ def init_db():
             ("Savannah 215", 12.5, 21.15, 215.1, 11.99, 11.5),
             ("Savannah 235 Coastal Streetscape", 12.0, 28.0, 254.1, 12.0, 11.5),
             ("Savannah 235 Hamptons Streetscape", 12.5, 28.0, 250.2, 11.99, 11.5),
+            # Malabar Series
+            ("Malabar 153 Traditional", 10.0, 25.0, 153.0, 10.5, 10.0),
             # Tampa Bay Series
             ("Tampa Bay 185", 12.5, 25.0, 184.5, 12.5, 12.5),
             ("Tampa Bay 200", 12.5, 24.9, 200.6, 11.5, 11.5),

@@ -240,6 +240,7 @@ def api_stats():
 # ---- Feedback ----
 @app.route("/api/feedback", methods=["POST"])
 def api_feedback():
+    _ensure_db()
     data = request.json
     if not data.get("review_id") or not data.get("check_name") or not data.get("issue_text"):
         return jsonify({"error": "review_id, check_name, and issue_text required"}), 400

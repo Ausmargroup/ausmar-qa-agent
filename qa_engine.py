@@ -1797,6 +1797,33 @@ def check_red_pen(file_map: dict, deposit_type: str) -> dict:
 
         fp_notes = _get_fp_notes("red_pen_markup")
 
+        # ---- Filename-based plan type pre-detection (runs BEFORE vision call) ----
+        # Extract confirmed plan types from filenames so we can:
+        # (a) tell the LLM what's in the document, and
+        # (b) force-override any LLM misses after parsing.
+        FILENAME_PLAN_TOKENS = [
+            ("floor_plan",      ["floor plan", " floor,", " floor ", "floor.pdf", "flr plan"]),
+            ("elevations",      ["elev", "elevation"]),
+            ("electrical",      ["elec", "electrical", "elect"]),
+            ("floor_coverings", ["f cov", "fcov", "floor cov", "floor covering", "flr cov"]),
+            ("concrete",        ["concrete", "slab"]),
+            ("site_plan",       ["site plan", " site,", " site "]),
+            ("kitchen",         ["kit,", " kit ", "kitchen"]),
+            ("bathroom",        ["ensuite", "bath", "bathroom"]),
+        ]
+        rp_combined_name = " ".join([
+            redpen_file.get("name", "").lower(),
+            file_map.get("red_pen_extra", {}).get("name", "").lower(),
+        ])
+        filename_confirmed_types = set()
+        for plan_key, tokens in FILENAME_PLAN_TOKENS:
+            for tok in tokens:
+                if tok in rp_combined_name:
+                    filename_confirmed_types.add(plan_key)
+                    break
+        if filename_confirmed_types:
+            print(f"[INFO] Red pen filename pre-confirms plan types: {filename_confirmed_types}")
+
         deposit_desc = (
             "NHP ($2,500) — red pen markups ARE required, must be RED on AUSMAR base plan with dimensions"
             if deposit_type == "NHP"
@@ -1844,7 +1871,8 @@ Analyse and report in JSON:
   "notes": ""
 }}
 
-IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doubt, assume the markup is valid. Colored highlights (green, yellow, blue, pink) ARE valid markup colours for AUSMAR red pen documents.{fp_notes}"""
+IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doubt, assume the markup is valid. Colored highlights (green, yellow, blue, pink) ARE valid markup colours for AUSMAR red pen documents.{fp_notes}
+{f'FILENAME CONFIRMS these plan types are present in this document: {sorted(filename_confirmed_types)}. Include ALL of these in plan_types_covered and do NOT list them in missing_plan_types.' if filename_confirmed_types else ''}"""
 
         raw = call_vision_model(system_prompt, "Analyse these Red Pen Markup pages.", pages_b64)
         analysis = parse_json_from_llm(raw)
@@ -1875,38 +1903,27 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
                     "Red Pen is not signed/initialled by the customer — "
                     "customer sign-off is required on all Red Pen pages"
                 )
-            missing = analysis.get("missing_plan_types", [])
-            # Supplement LLM detection with filename-based plan type recognition.
-            # The LLM may miss plan types that are only evident from the filename
-            # (e.g. "S26NLSP Red Pen Site, Floor, Elec, F Cov, Concrete, Kit, Ensuite, Bath.pdf")
-            if missing:
-                # Build a combined name string from all red pen filenames
-                rp_names = [
-                    redpen_file.get("name", "").lower(),
-                    file_map.get("red_pen_extra", {}).get("name", "").lower(),
-                ]
-                combined_name = " ".join(rp_names)
-                # Map filename tokens to required plan type keys
-                FILENAME_PLAN_TOKENS = [
-                    ("floor_plan",      ["floor plan", " floor,", " floor ", "floor.pdf", "flr plan"]),
-                    ("elevations",      ["elev", "elevation"]),
-                    ("electrical",      ["elec", "electrical", "elect"]),
-                    ("floor_coverings", ["f cov", "fcov", "floor cov", "floor covering", "flr cov"]),
-                    ("concrete",        ["concrete", "slab"]),
-                    ("site_plan",       ["site plan", " site,", " site "]),
-                    ("kitchen",         ["kit,", " kit ", "kitchen"]),
-                    ("bathroom",        ["ensuite", "bath", "bathroom"]),
-                ]
-                confirmed_from_filename = set()
-                for plan_key, tokens in FILENAME_PLAN_TOKENS:
-                    for tok in tokens:
-                        if tok in combined_name:
-                            confirmed_from_filename.add(plan_key)
-                            break
-                # Remove from missing any types confirmed by filename
-                missing = [m for m in missing if m not in confirmed_from_filename]
-                if confirmed_from_filename:
-                    print(f"[INFO] Red pen filename confirms plan types: {confirmed_from_filename} — removed from missing")
+            # DEFINITIVE filename override: runs unconditionally after LLM response.
+            # filename_confirmed_types was computed before the vision call.
+            # Normalise missing_plan_types — LLM may return None, string, or use spaces instead of underscores
+            raw_missing = analysis.get("missing_plan_types") or []
+            if isinstance(raw_missing, str):
+                raw_missing = [x.strip() for x in raw_missing.replace(",", " ").split() if x.strip()]
+            # Normalise keys: "floor coverings" → "floor_coverings" etc.
+            def _norm_key(k):
+                return k.lower().replace(" ", "_").replace("-", "_")
+            missing = [_norm_key(m) for m in raw_missing if m]
+            if filename_confirmed_types:
+                before = list(missing)
+                missing = [m for m in missing if m not in filename_confirmed_types]
+                print(f"[INFO] Red pen filename override: confirmed={filename_confirmed_types}, before={before}, after={missing}")
+                # Force-update analysis so verdict LLM sees the corrected state
+                analysis["missing_plan_types"] = missing
+                analysis["plan_types_confirmed_by_filename"] = sorted(filename_confirmed_types)
+                existing_covered = analysis.get("plan_types_covered") or []
+                if isinstance(existing_covered, str):
+                    existing_covered = [existing_covered]
+                analysis["plan_types_covered"] = sorted(set([_norm_key(x) for x in existing_covered]) | filename_confirmed_types)
             if missing and len(missing) > 0:
                 issues.append(
                     f"Red Pen is missing required plan types: {', '.join(missing)}. "
