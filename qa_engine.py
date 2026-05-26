@@ -2267,7 +2267,7 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                 for fn in prelog_merged_docs:
                     fp2 = os.path.join(extract_dir, fn)
                     ext = os.path.splitext(fn)[1].lower()
-                    new_files.append({"name": fn, "path": fp2, "ext": ext, "size": os.path.getsize(fp2)})
+                    new_files.append({"name": fn, "full_path": fp2, "ext": ext, "size": os.path.getsize(fp2)})
                 extra_result = classify_all_files(new_files)
                 # Merge into existing file_map (don't overwrite already-classified docs)
                 for doc_type, finfo in extra_result["file_map"].items():
@@ -2527,11 +2527,10 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
             "lhdc_reason": "LHDC check disabled — not applicable at PSE submission stage",
         }
 
-        # === Build corrected zip ===
-        if results["corrections_applied"]:
-            corrected_path = build_corrected_zip(extract_dir, deal_code, corrected_zip_dir)
-            results["corrected_zip_path"] = corrected_path
-            results["corrected_zip_filename"] = os.path.basename(corrected_path)
+        # === Build corrected zip (always build so user can download renamed files) ===
+        corrected_path = build_corrected_zip(extract_dir, deal_code, corrected_zip_dir)
+        results["corrected_zip_path"] = corrected_path
+        results["corrected_zip_filename"] = os.path.basename(corrected_path)
 
         # === Cross-check pre-log ===
         _progress(92, "Cross-checking pre-log data...")

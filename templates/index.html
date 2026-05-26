@@ -421,7 +421,7 @@ function startPolling(reviewId){
         clearInterval(pollTimer);pollTimer=null;
         $('progFill').style.width='100%';$('progTxt').textContent='Complete.';$('progTitle').classList.remove('loading');
         const result=d.result||{};
-        if(d.db_review_id)result.review_id=d.db_review_id;
+        if(d.db_review_id){result.review_id=d.db_review_id;result.db_review_id=d.db_review_id;}
         setTimeout(()=>{$('progCard').style.display='none';renderResults(result)},500);
       } else if(d.status==='failed'){
         clearInterval(pollTimer);pollTimer=null;
@@ -439,7 +439,7 @@ function ilist(iss,wrn){let h='<ul class="ilist">';(iss||[]).forEach(i=>h+=`<li 
 function renderResults(d){
   const a=$('resultsArea');
   if(d.error&&!d.checks){a.innerHTML=`<div class="verdict v-error"><div class="vl">Error</div><div class="vt">Review Failed</div><div class="vr">${esc(d.error)}</div></div><button class="btn btn-primary" onclick="resetReview()">New Review</button>`;return}
-  const v=d.verdict_data||{};const c=d.checks||{};const rid=d.review_id;
+  const v=d.verdict_data||{};const c=d.checks||{};const rid=d.review_id;const dbRid=d.db_review_id||d.review_id;
   let h='';
 
   // Verdict
@@ -460,11 +460,12 @@ function renderResults(d){
   }
 
   // Corrections
+  // Download button — always show (zip is always built with renamed files)
+  h+=`<div style="margin:0.5rem 0"><a href="/api/download/${dbRid}" class="btn btn-sm btn-green" download>&#8595; Download Corrected Zip</a></div>`;
   if(d.corrections_applied?.length){
     h+=`<div class="corr"><h4>Auto-Corrections Applied</h4><ul>`;
     d.corrections_applied.forEach(c=>h+=`<li>${esc(c)}</li>`);
     h+=`</ul></div>`;
-    if(d.corrected_zip_path)h+=`<div style="margin:0.5rem 0"><a href="/api/download/${rid}" class="btn btn-sm btn-green" download>Download Corrected Zip</a></div>`;
   }
 
   // Heath note
