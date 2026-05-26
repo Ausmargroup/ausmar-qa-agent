@@ -409,6 +409,23 @@ def api_prelog_detail(prelog_id):
     return jsonify(prelog)
 
 
+@app.route("/api/prelogs/<int:prelog_id>", methods=["PATCH"])
+def api_update_prelog(prelog_id):
+    _ensure_db()
+    data = request.get_json() or {}
+    allowed = ["consultant_name", "notes", "deposit_amount", "customer_names"]
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+    conn = db.get_db()
+    sets = ", ".join(f"{k}=?" for k in updates)
+    vals = list(updates.values()) + [prelog_id]
+    conn.execute(f"UPDATE prelogs SET {sets}, updated_at=datetime('now') WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "updated": list(updates.keys())})
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 
