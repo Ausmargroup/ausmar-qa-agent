@@ -234,6 +234,29 @@ def init_db():
         ],
     )
     conn.commit()
+
+    # Seed May 2026 pre-log entries — INSERT OR IGNORE so re-runs never duplicate
+    # These are keyed on deal_code + consultant_name to avoid duplicates
+    may_prelogs = [
+        ("S26ABJHM", "Telford Louez",   '["ITP-Signed.pdf","DepositRemit.pdf","DriversLicence-JMandAB.jpg"]'),
+        ("S26BGAR",  "Andrew Shand",    '["IntentionToPurchaseandagreement.pdf","$2,500.00DepositfromEFTPOSTerminalatAURAClearwaterHouse.pdf","BibekGaireI.D..pdf","AmarRanaI.D..pdf"]'),
+        ("S26DJJR",  "Ian Sullivan",    '["IntentiontoPurchase.pdf","Receipt.jpg","DisclosurePlan.pdf","GeositePlan.pdf","DriversLicence.jpg","DriversLicence2.jpg"]'),
+        ("S26JC",    "Ian Sullivan",    '["IntentiontoPurchase.pdf","Receipt.webp","DriversLicence.webp"]'),
+        ("S26BPS",   "Nadia Nemesagu",  '["INTENTIONTOPURCHASE.pdf","DepositReceipt.jpg","DriversLicence2.jpg","DriversLicence.jpg"]'),
+        ("S26JJM",   "Andrew Shand",    '["IntentionToPurchase.pdf","$2,500.00DirectDepositS26JJM.PNG","JoaquinI.D..PNG","JordenI.D..PNG"]'),
+        ("S26NLSP",  "Rod Kennerson",   '["INTENTION+TO+PURCHASE-STANDARD+HOMES(S26NLSP)signed.pdf","S26NLSPDLidentification.pdf","GeositeSTDMalabarS26NLSP.pdf","P15Stage54DisclosurePlan.pdf","BuildingEnvelopeandPODS26NLSPStage54Precinct15.pdf"]'),
+    ]
+    for deal_code, consultant, files_json in may_prelogs:
+        existing = conn.execute(
+            "SELECT id FROM prelogs WHERE deal_code=? AND consultant_name=?",
+            (deal_code, consultant)
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                "INSERT INTO prelogs (deal_code, consultant_name, files, file_paths, status) VALUES (?,?,?,?,?)",
+                (deal_code, consultant, files_json, '[]', 'pending')
+            )
+    conn.commit()
     conn.close()
 
 
