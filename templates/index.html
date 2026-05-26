@@ -377,27 +377,42 @@ function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(
 function clearFile(){selFile=null;$('fbar').style.display='none';$('btnGo').disabled=true;$('fileIn').value=''}
 
 // ============ START REVIEW ============
-async function startReview(){
+function startReview(){
   if(!selFile)return;
   $('uploadCard').style.display='none';$('progCard').style.display='block';$('resultsArea').innerHTML='';
   $('progFill').style.width='5%';$('progTxt').textContent='Uploading file...';$('progTitle').textContent='Uploading submission...';$('progTitle').classList.add('loading');
-
   const fd=new FormData();fd.append('file',selFile);
   // Attach consultant identity from access code
   if(currentUser){fd.append('consultant_name',currentUser.consultant_name);fd.append('consultant_email',currentUser.email||'')}
-  try{
-    const r=await fetch('/api/review',{method:'POST',body:fd});
-    const d=await r.json();
-    if(r.status===202 && d.review_id){
-      $('progFill').style.width='10%';$('progTxt').textContent='File uploaded. Processing...';$('progTitle').textContent='Analysing submission...';
-      startPolling(d.review_id);
-    } else if(d.error){
-      showError(d.error);
-    } else {
-      $('progFill').style.width='100%';$('progTxt').textContent='Complete.';
-      setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
+  // Use XMLHttpRequest with upload progress events to keep the connection alive.
+  // fetch() with no timeout hangs silently if Railway's proxy drops idle connections at 60s.
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/review');
+  xhr.timeout=180000;
+  xhr.upload.onprogress=function(e){
+    if(e.lengthComputable){
+      const pct=Math.round((e.loaded/e.total)*40)+5;
+      $('progFill').style.width=pct+'%';
+      $('progTxt').textContent='Uploading: '+Math.round((e.loaded/e.total)*100)+'%';
     }
-  }catch(e){showError(e.message)}
+  };
+  xhr.onload=function(){
+    try{
+      const d=JSON.parse(xhr.responseText);
+      if(xhr.status===202 && d.review_id){
+        $('progFill').style.width='10%';$('progTxt').textContent='File uploaded. Processing...';$('progTitle').textContent='Analysing submission...';
+        startPolling(d.review_id);
+      } else if(d.error){
+        showError(d.error);
+      } else {
+        $('progFill').style.width='100%';$('progTxt').textContent='Complete.';
+        setTimeout(()=>{$('progCard').style.display='none';renderResults(d)},400);
+      }
+    }catch(e){showError('Upload failed: '+e.message);}
+  };
+  xhr.onerror=function(){showError('Network error during upload. Check your connection and try again.');};
+  xhr.ontimeout=function(){showError('Upload timed out after 3 minutes. The file may be too large or your connection is slow.');};
+  xhr.send(fd);
 }
 
 function showError(msg){

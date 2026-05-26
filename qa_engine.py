@@ -414,7 +414,39 @@ def extract_pdf_text(pdf_path: str, max_pages: int = 5) -> str:
 
 
 def extract_spreadsheet_info(file_path: str) -> dict:
-    """Extract sheet names and header row from xlsx/xlsm. Returns dict with metadata."""
+    """Extract sheet names and header row from xlsx/xlsm/xlsb. Returns dict with metadata."""
+    ext = Path(file_path).suffix.lower()
+    # Handle .xlsb (binary Excel) — openpyxl cannot read it, use pyxlsb if available
+    if ext == ".xlsb":
+        try:
+            import pyxlsb
+            with pyxlsb.open_workbook(file_path) as wb:
+                sheets = wb.sheets
+                sample_values = []
+                for sheet_name in sheets[:3]:
+                    with wb.get_sheet(sheet_name) as ws:
+                        row_count = 0
+                        for row in ws.rows():
+                            row_count += 1
+                            if row_count > 10:
+                                break
+                            row_text = [str(c.v).lower() for c in row if c.v is not None]
+                            sample_values.extend(row_text)
+                return {
+                    "type": "spreadsheet",
+                    "sheets": sheets,
+                    "headers": sample_values[:20],
+                    "sample_text": " ".join(sample_values)[:4000],
+                }
+        except ImportError:
+            # pyxlsb not available — classify by filename alone
+            fname_lower = Path(file_path).name.lower()
+            sample = fname_lower  # Use filename as sample text for PSE detection
+            return {"type": "spreadsheet", "sheets": [], "headers": [], "sample_text": sample}
+        except Exception as e:
+            print(f"[WARN] extract_spreadsheet_info (xlsb) failed for {file_path}: {e}")
+            fname_lower = Path(file_path).name.lower()
+            return {"type": "spreadsheet", "sheets": [], "headers": [], "sample_text": fname_lower}
     if not _OPENPYXL_AVAILABLE:
         return {"type": "spreadsheet", "sheets": [], "headers": [], "sample_text": ""}
     try:
@@ -806,7 +838,7 @@ CONTENT_FINGERPRINTS = [
 ]
 
 # Spreadsheet fingerprints (for PSE Excel)
-SPREADSHEET_EXTS = {".xlsx", ".xlsm", ".xls", ".csv"}
+SPREADSHEET_EXTS = {".xlsx", ".xlsm", ".xls", ".csv", ".xlsb"}
 
 
 def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: dict | None) -> tuple[str | None, float]:
@@ -847,6 +879,10 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
 
     # --- Tier 1a: Spreadsheet files → PSE Excel ---
     if ext in SPREADSHEET_EXTS:
+        # Filename-first for xlsb: "PSE May 2026 v3 S26NLSP.xlsb" → PSE Excel
+        # Also catches any spreadsheet with PSE in the filename
+        if "pse" in fn_lower or "provisional" in fn_lower:
+            return "pse_excel", 1.0
         if spreadsheet_info:
             # Check sheet names — PSE Excel has characteristic sheet names
             sheets_lower = [s.lower() for s in spreadsheet_info.get("sheets", [])]
@@ -1094,19 +1130,30 @@ def classify_all_files(files: list[dict], progress_callback=None) -> dict:
             if doc_type in file_map:
                 existing = classifications.get(file_map[doc_type]["name"], {})
                 if confidence > existing.get("confidence", 0):
-                    # Demote existing to unclassified
-                    unclassified.append(file_map[doc_type])
+                    # Demote existing to unclassified (or red_pen_extra for red pen)
+                    if doc_type == "red_pen" and "red_pen_extra" not in file_map:
+                        file_map["red_pen_extra"] = file_map[doc_type]
+                    else:
+                        unclassified.append(file_map[doc_type])
                     file_map[doc_type] = f
                     classifications[f["name"]] = {
                         "doc_type": doc_type, "confidence": confidence, "method": "text",
                         "extracted_text_preview": text_content[:200] if text_content else "",
                     }
                 else:
-                    unclassified.append(f)
-                    classifications[f["name"]] = {
-                        "doc_type": doc_type, "confidence": confidence, "method": "text",
-                        "note": f"Duplicate — {file_map[doc_type]['name']} already classified as {doc_type}",
-                    }
+                    # For red_pen duplicates, store as red_pen_extra instead of discarding
+                    if doc_type == "red_pen" and "red_pen_extra" not in file_map:
+                        file_map["red_pen_extra"] = f
+                        classifications[f["name"]] = {
+                            "doc_type": "red_pen_extra", "confidence": confidence, "method": "text",
+                            "note": "Additional Red Pen file — will be merged into vision analysis",
+                        }
+                    else:
+                        unclassified.append(f)
+                        classifications[f["name"]] = {
+                            "doc_type": doc_type, "confidence": confidence, "method": "text",
+                            "note": f"Duplicate — {file_map[doc_type]['name']} already classified as {doc_type}",
+                        }
             else:
                 file_map[doc_type] = f
                 classifications[f["name"]] = {
@@ -1723,6 +1770,23 @@ def check_red_pen(file_map: dict, deposit_type: str) -> dict:
                 "issues": [f"Red Pen in unsupported format: {ext}"],
                 "warnings": [], "analysis": {},
             }
+
+        # Merge pages from red_pen_extra (second red pen file) into the analysis
+        if "red_pen_extra" in file_map:
+            extra_path = file_map["red_pen_extra"]["full_path"]
+            extra_ext = Path(extra_path).suffix.lower()
+            try:
+                if extra_ext == ".pdf":
+                    extra_pages = pdf_all_pages_to_base64(extra_path, dpi=100, max_pages=5)
+                    if extra_pages:
+                        pages_b64 = (pages_b64 or []) + extra_pages
+                        print(f"[INFO] Merged {len(extra_pages)} pages from red_pen_extra into Red Pen analysis")
+                elif extra_ext in (".jpg", ".jpeg", ".png"):
+                    b64 = image_to_base64(extra_path)
+                    if b64:
+                        pages_b64 = (pages_b64 or []) + [b64]
+            except Exception as e:
+                print(f"[WARN] Failed to merge red_pen_extra pages: {e}")
 
         if not pages_b64:
             return {

@@ -15,4 +15,4 @@ RUN mkdir -p data uploads corrected_zips prelog_uploads logs
 # Expose port 8080 (Railway routes to this port)
 EXPOSE 8080
 # Exec form — Railway uses port 8080; timeout 600s for large zip processing
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "600", "--workers", "1", "--threads", "4", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "600", "--keep-alive", "75", "--workers", "1", "--threads", "4", "app:app"]
