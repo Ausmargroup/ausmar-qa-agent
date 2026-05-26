@@ -200,6 +200,14 @@ def init_db():
             ("Portland 204 Coastal Streetscape", 12.9, 11.5, 202.4, 12.0, 11.5),
             ("Portland 204 Hamptons Streetscape", 12.9, 21.94, 206.1, 11.73, 11.5),
             ("Portland 204 Traditional Streetscape", 12.9, 21.76, 205.5, 12.9, 11.5),
+            # Long Beach (base, no facade)
+            ("Long Beach 300",                                12.5, 32.0, 300.5, 12.5, 12.5),
+            # Miami (base, no facade)
+            ("Miami 290",                                    12.0, 19.0, 290.4, 15.0, 15.0),
+            # Pasadena (base, no facade)
+            ("Pasadena 235",                                 14.0, 21.5, 234.2, 14.0, 14.0),
+            # Portland (base, no facade)
+            ("Portland 204",                                 12.9, 28.0, 201.8, 12.9, 12.9),
             # Savannah Series
             ("Savannah 205", 12.5, 21.1, 205.2, 11.79, 11.5),
             ("Savannah 215", 12.5, 21.15, 215.1, 11.99, 11.5),
@@ -214,6 +222,15 @@ def init_db():
             ("Tampa Bay 200 Palm Valley Streetscape", 12.5, 24.6, 199.5, 11.5, 11.5),
             ("Tampa Bay 200 Traditional Streetscape", 12.5, 27.2, 200.4, 11.1, 11.1),
             ("Tampa Bay 174 Traditional Streetscape", 12.5, 19.2, 173.4, 11.1, 11.1),
+        ],
+    )
+    conn.commit()
+
+    # Seed default access codes — INSERT OR IGNORE so re-runs never duplicate
+    conn.executemany(
+        "INSERT OR IGNORE INTO access_codes (code, consultant_name, email, active) VALUES (?,?,?,1)",
+        [
+            ("50LF6T", "Nik (Admin)", "nik@ausmar.com.au"),
         ],
     )
     conn.commit()
