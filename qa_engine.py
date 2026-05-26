@@ -1876,6 +1876,37 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
                     "customer sign-off is required on all Red Pen pages"
                 )
             missing = analysis.get("missing_plan_types", [])
+            # Supplement LLM detection with filename-based plan type recognition.
+            # The LLM may miss plan types that are only evident from the filename
+            # (e.g. "S26NLSP Red Pen Site, Floor, Elec, F Cov, Concrete, Kit, Ensuite, Bath.pdf")
+            if missing:
+                # Build a combined name string from all red pen filenames
+                rp_names = [
+                    redpen_file.get("name", "").lower(),
+                    file_map.get("red_pen_extra", {}).get("name", "").lower(),
+                ]
+                combined_name = " ".join(rp_names)
+                # Map filename tokens to required plan type keys
+                FILENAME_PLAN_TOKENS = [
+                    ("floor_plan",      ["floor plan", " floor,", " floor ", "floor.pdf", "flr plan"]),
+                    ("elevations",      ["elev", "elevation"]),
+                    ("electrical",      ["elec", "electrical", "elect"]),
+                    ("floor_coverings", ["f cov", "fcov", "floor cov", "floor covering", "flr cov"]),
+                    ("concrete",        ["concrete", "slab"]),
+                    ("site_plan",       ["site plan", " site,", " site "]),
+                    ("kitchen",         ["kit,", " kit ", "kitchen"]),
+                    ("bathroom",        ["ensuite", "bath", "bathroom"]),
+                ]
+                confirmed_from_filename = set()
+                for plan_key, tokens in FILENAME_PLAN_TOKENS:
+                    for tok in tokens:
+                        if tok in combined_name:
+                            confirmed_from_filename.add(plan_key)
+                            break
+                # Remove from missing any types confirmed by filename
+                missing = [m for m in missing if m not in confirmed_from_filename]
+                if confirmed_from_filename:
+                    print(f"[INFO] Red pen filename confirms plan types: {confirmed_from_filename} — removed from missing")
             if missing and len(missing) > 0:
                 issues.append(
                     f"Red Pen is missing required plan types: {', '.join(missing)}. "
