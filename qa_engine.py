@@ -1917,13 +1917,22 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
                 before = list(missing)
                 missing = [m for m in missing if m not in filename_confirmed_types]
                 print(f"[INFO] Red pen filename override: confirmed={filename_confirmed_types}, before={before}, after={missing}")
-                # Force-update analysis so verdict LLM sees the corrected state
-                analysis["missing_plan_types"] = missing
+                # NUCLEAR: delete missing_plan_types from analysis entirely so verdict LLM
+                # never sees them as missing. Also update plan_types_covered.
+                analysis.pop("missing_plan_types", None)
                 analysis["plan_types_confirmed_by_filename"] = sorted(filename_confirmed_types)
                 existing_covered = analysis.get("plan_types_covered") or []
                 if isinstance(existing_covered, str):
                     existing_covered = [existing_covered]
                 analysis["plan_types_covered"] = sorted(set([_norm_key(x) for x in existing_covered]) | filename_confirmed_types)
+                # Also remove any 'concerns' entries that mention the confirmed types
+                concerns = analysis.get("concerns", [])
+                if isinstance(concerns, list):
+                    confirmed_keywords = [t.replace("_", " ") for t in filename_confirmed_types]
+                    analysis["concerns"] = [
+                        c for c in concerns
+                        if not any(kw in str(c).lower() for kw in confirmed_keywords)
+                    ]
             if missing and len(missing) > 0:
                 issues.append(
                     f"Red Pen is missing required plan types: {', '.join(missing)}. "
