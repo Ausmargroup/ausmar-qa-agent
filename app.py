@@ -385,11 +385,15 @@ def api_add_prelog():
         print(f"[WARN] Could not create prelog_uploads dir: {e}", file=sys.stderr)
 
     # Handle file uploads — save to disk, record both filename and full path
+    # Use getlist() so ALL files sent under the same key (e.g. multiple 'files' fields) are captured.
+    # Iterating request.files by key and using request.files[key] only returns the LAST file per key.
     saved_files = []
     saved_paths = []
     if request.files:
-        for key in request.files:
-            f = request.files[key]
+        all_uploads = []
+        for key in request.files.keys():
+            all_uploads.extend(request.files.getlist(key))
+        for f in all_uploads:
             if f.filename:
                 try:
                     # Sanitise filename: strip path separators and spaces
