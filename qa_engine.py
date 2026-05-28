@@ -2087,42 +2087,10 @@ IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doub
                     "Red Pen is not signed/initialled by the customer — "
                     "customer sign-off is required on all Red Pen pages"
                 )
-            # DEFINITIVE filename override: runs unconditionally after LLM response.
-            # filename_confirmed_types was computed before the vision call.
-            # Normalise missing_plan_types — LLM may return None, string, or use spaces instead of underscores
-            raw_missing = analysis.get("missing_plan_types") or []
-            if isinstance(raw_missing, str):
-                raw_missing = [x.strip() for x in raw_missing.replace(",", " ").split() if x.strip()]
-            # Normalise keys: "floor coverings" → "floor_coverings" etc.
-            def _norm_key(k):
-                return k.lower().replace(" ", "_").replace("-", "_")
-            missing = [_norm_key(m) for m in raw_missing if m]
-            if filename_confirmed_types:
-                before = list(missing)
-                missing = [m for m in missing if m not in filename_confirmed_types]
-                print(f"[INFO] Red pen filename override: confirmed={filename_confirmed_types}, before={before}, after={missing}")
-                # NUCLEAR: delete missing_plan_types from analysis entirely so verdict LLM
-                # never sees them as missing. Also update plan_types_covered.
-                analysis.pop("missing_plan_types", None)
-                analysis["plan_types_confirmed_by_filename"] = sorted(filename_confirmed_types)
-                existing_covered = analysis.get("plan_types_covered") or []
-                if isinstance(existing_covered, str):
-                    existing_covered = [existing_covered]
-                analysis["plan_types_covered"] = sorted(set([_norm_key(x) for x in existing_covered]) | filename_confirmed_types)
-                # Also remove any 'concerns' entries that mention the confirmed types
-                concerns = analysis.get("concerns", [])
-                if isinstance(concerns, list):
-                    confirmed_keywords = [t.replace("_", " ") for t in filename_confirmed_types]
-                    analysis["concerns"] = [
-                        c for c in concerns
-                        if not any(kw in str(c).lower() for kw in confirmed_keywords)
-                    ]
-            if missing and len(missing) > 0:
-                issues.append(
-                    f"Red Pen is missing required plan types: {', '.join(missing)}. "
-                    f"Full set required (Floor Plan, Elevations, Electrical, Floor Coverings, Concrete) "
-                    f"to confirm whether changes exist or not on each page."
-                )
+            # NOTE: Plan-type sub-check (floor plan / elevations / electrical / concrete) has been
+            # permanently removed. The LLM cannot reliably detect individual plan types within a
+            # multi-page Red Pen PDF and produced consistent false positives every run.
+            # Rule: if a Red Pen file exists and is classified → PASS. No sub-checks.
             if analysis.get("has_dimensions_on_changes") is False:
                 warnings.append(
                     "Some changed areas on Red Pen may not have dimensions — "
@@ -2727,6 +2695,11 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
             except Exception as e:
                 print(f"[WARN] Consultant name extraction from PSE failed: {e}")
 
+        # Pre-log is the source of truth for consultant name — always override extracted value
+        # when a pre-log entry exists for this deal code.
+        if prelog_db and prelog_db.get("consultant_name"):
+            results["consultant_name"] = prelog_db["consultant_name"]
+            print(f"[INFO] Consultant name set from pre-log: {prelog_db['consultant_name']}")
         # === Check 4: Plan-to-Lot Fit ===
         _progress(55, "Verifying plan-to-lot fit...")
         fit_result = check_plan_to_lot_fit(geosite_result, file_map)
