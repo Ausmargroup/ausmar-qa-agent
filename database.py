@@ -232,7 +232,14 @@ def init_db():
     conn.executemany(
         "INSERT OR IGNORE INTO access_codes (code, consultant_name, email, active) VALUES (?,?,?,1)",
         [
+            ("8E8QMG", "Andrew",      ""),
+            ("QYN2DU", "Caitlyn",     ""),
+            ("K7FNM6", "Heath",       ""),
+            ("0G25Q7", "Ian",         ""),
+            ("C71EEJ", "Johan",       ""),
             ("50LF6T", "Nik (Admin)", "nik@ausmar.com.au"),
+            ("JB04JH", "Rod",         ""),
+            ("9CLF1C", "Telford",     ""),
         ],
     )
     conn.commit()
