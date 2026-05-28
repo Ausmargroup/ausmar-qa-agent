@@ -1,7 +1,8 @@
 FROM python:3.11-slim
-# Install poppler for PDF-to-image conversion
+# Install poppler (PDF-to-image) and tesseract (OCR for scanned GeoSite PDFs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # Install Python dependencies

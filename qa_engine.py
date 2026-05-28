@@ -54,6 +54,14 @@ try:
 except ImportError:
     _PDF2IMAGE_AVAILABLE = False
 
+# OCR for scanned GeoSite PDFs (deterministic site coverage / setback extraction)
+_PYTESSERACT_AVAILABLE = False
+try:
+    import pytesseract
+    _PYTESSERACT_AVAILABLE = True
+except ImportError:
+    pass
+
 
 # ---------------------------------------------------------------------------
 # Pre-Log Parser
@@ -411,6 +419,163 @@ def extract_pdf_text(pdf_path: str, max_pages: int = 5) -> str:
     except Exception as e:
         print(f"[WARN] extract_pdf_text failed for {pdf_path}: {e}")
         return ""
+
+
+def ocr_geosite_info_box(pdf_path: str) -> dict:
+    """
+    Deterministically extract site coverage %, site area, build area, ceiling height,
+    and estate/locality from a scanned GeoSite PDF using OCR.
+
+    The GeoSite STD document has a consistent info box in the top-left with labelled rows:
+      Incomplete Sub:   Yes/No
+      Current Fencing:  ...
+      Ceiling Height:   2.4m
+      Site Coverage:    62.2%
+      Site Area:        250 m2
+      Build Area:       155.51 m2
+
+    And a header section with:
+      Customer:         ...
+      Site Address:     Lot XXXX Stage YY
+      Locality:         Gagalba / Banya / etc.
+      Home Design:      MALABAR 153 TRADITIONAL
+      Estate:           Aura
+      SP Number:        XXXX
+
+    Returns a dict with extracted values (None if not found).
+    Falls back to empty dict if OCR is unavailable or fails.
+    """
+    result = {
+        "site_coverage_percent": None,
+        "site_area_m2": None,
+        "build_area_m2": None,
+        "ceiling_height_m": None,
+        "estate_name": None,
+        "locality": None,
+        "lot_number": None,
+        "home_design": None,
+    }
+
+    if not _PYTESSERACT_AVAILABLE or not _PDF2IMAGE_AVAILABLE:
+        print("[OCR] pytesseract or pdf2image unavailable — skipping deterministic GeoSite extraction")
+        return result
+
+    try:
+        # Render first page at 200dpi for good OCR accuracy
+        images = convert_from_path(pdf_path, first_page=1, last_page=1, dpi=200)
+        if not images:
+            return result
+        img = images[0]
+
+        # OCR the full page with sparse text mode to catch all labels
+        ocr_text = pytesseract.image_to_string(img, config="--psm 11")
+
+        # The GeoSite info box is a 2-column table. OCR with --psm 11 (sparse text)
+        # may put the label and value on separate lines, or on the same line.
+        # Strategy: search for label on same line first; if not found, look for the
+        # value on the line immediately following the label line.
+
+        def _extract_labelled_value(label_pattern, value_pattern, text):
+            """Try same-line match first, then label-on-one-line / value-on-next-line."""
+            # Same-line: label ... value
+            m = re.search(label_pattern + r'\s*[:\-]?\s*' + value_pattern, text, re.IGNORECASE)
+            if m:
+                return m.group(1)
+            # Multi-line: find label line, then scan next 3 lines for value
+            lines = text.split('\n')
+            for i, line in enumerate(lines):
+                if re.search(label_pattern, line, re.IGNORECASE):
+                    # Check same line after colon
+                    m2 = re.search(r'[:\-]\s*' + value_pattern, line, re.IGNORECASE)
+                    if m2:
+                        return m2.group(1)
+                    # Check next 1-3 lines
+                    for j in range(1, 4):
+                        if i + j < len(lines):
+                            m3 = re.search(r'^\s*' + value_pattern, lines[i + j], re.IGNORECASE)
+                            if m3:
+                                return m3.group(1)
+            return None
+
+        # --- Site Coverage ---
+        val = _extract_labelled_value(
+            r'Site\s+Coverage',
+            r'([0-9]+(?:\.[0-9]+)?)\s*%',
+            ocr_text
+        )
+        if val:
+            result["site_coverage_percent"] = float(val)
+        else:
+            # Fallback: any standalone percentage that's plausible (30-100%)
+            m = re.search(r'\b([3-9][0-9](?:\.[0-9]+)?)\s*%', ocr_text)
+            if m:
+                result["site_coverage_percent"] = float(m.group(1))
+
+        # --- Site Area ---
+        val = _extract_labelled_value(
+            r'Site\s+Area',
+            r'([0-9]+(?:\.[0-9]+)?)\s*m',
+            ocr_text
+        )
+        if val:
+            result["site_area_m2"] = float(val)
+
+        # --- Build Area ---
+        val = _extract_labelled_value(
+            r'Build\s+Area',
+            r'([0-9]+(?:\.[0-9]+)?)\s*m',
+            ocr_text
+        )
+        if val:
+            result["build_area_m2"] = float(val)
+
+        # --- Ceiling Height ---
+        val = _extract_labelled_value(
+            r'Ceiling\s+Height',
+            r'([0-9]+(?:\.[0-9]+)?)\s*m',
+            ocr_text
+        )
+        if val:
+            result["ceiling_height_m"] = float(val)
+
+        # --- Estate ---
+        val = _extract_labelled_value(
+            r'Estate',
+            r'([A-Za-z][A-Za-z0-9 ]+?)(?:\s*$)',
+            ocr_text
+        )
+        if val:
+            result["estate_name"] = val.strip()
+
+        # --- Locality ---
+        val = _extract_labelled_value(
+            r'Locality',
+            r'([A-Za-z][A-Za-z0-9 ]+?)(?:\s*$)',
+            ocr_text
+        )
+        if val:
+            result["locality"] = val.strip()
+
+        # --- Lot Number from Site Address ---
+        m = re.search(r'(?:Lot|LOT)\s+([0-9]+)', ocr_text)
+        if m:
+            result["lot_number"] = m.group(1)
+
+        # --- Home Design ---
+        val = _extract_labelled_value(
+            r'Home\s+Design',
+            r'([A-Za-z][A-Za-z0-9 ]+?)(?:\s*$)',
+            ocr_text
+        )
+        if val:
+            result["home_design"] = val.strip()
+
+        print(f"[OCR] GeoSite info box extracted: {result}")
+        return result
+
+    except Exception as e:
+        print(f"[WARN] ocr_geosite_info_box failed for {pdf_path}: {e}")
+        return result
 
 
 def extract_spreadsheet_info(file_path: str) -> dict:
@@ -1492,6 +1657,25 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
             pages_b64,
         )
         analysis = parse_json_from_llm(raw)
+
+        # -----------------------------------------------------------------------
+        # DETERMINISTIC OCR OVERRIDE: extract site coverage, area, estate from
+        # the GeoSite info box using OCR. This is always consistent — no LLM
+        # variance. Override LLM values with OCR values when OCR succeeds.
+        # -----------------------------------------------------------------------
+        if ext == ".pdf":
+            ocr_data = ocr_geosite_info_box(geosite_path)
+            for field, ocr_val in [
+                ("site_coverage_percent", ocr_data.get("site_coverage_percent")),
+                ("site_area_m2",          ocr_data.get("site_area_m2")),
+                ("build_area_m2",         ocr_data.get("build_area_m2")),
+                ("estate_name",           ocr_data.get("estate_name")),
+                ("home_design",           ocr_data.get("home_design")),
+            ]:
+                if ocr_val is not None:
+                    analysis[field] = ocr_val
+                    print(f"[OCR] Overriding analysis['{field}'] = {ocr_val!r}")
+        # -----------------------------------------------------------------------
 
         issues = []
         warnings = []
