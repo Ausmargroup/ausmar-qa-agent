@@ -371,9 +371,18 @@ def api_prelogs():
 
 @app.route("/api/prelogs", methods=["POST"])
 def api_add_prelog():
+    _ensure_db()
     data = request.form.to_dict() if request.form else request.json or {}
     if not data.get("deal_code"):
         return jsonify({"error": "deal_code required"}), 400
+
+    # Re-ensure prelog uploads directory exists (volume may not have had subdirs on first mount)
+    prelog_folder = app.config["PRELOG_FOLDER"]
+    try:
+        os.makedirs(prelog_folder, exist_ok=True)
+    except Exception as e:
+        import sys
+        print(f"[WARN] Could not create prelog_uploads dir: {e}", file=sys.stderr)
 
     # Handle file uploads — save to disk, record both filename and full path
     saved_files = []
@@ -382,24 +391,35 @@ def api_add_prelog():
         for key in request.files:
             f = request.files[key]
             if f.filename:
-                # Sanitise filename: strip path separators
-                safe_name = os.path.basename(f.filename).replace(" ", "_")
-                save_path = os.path.join(app.config["PRELOG_FOLDER"], f"{data['deal_code']}_{safe_name}")
-                f.save(save_path)
-                saved_files.append(safe_name)
-                saved_paths.append(save_path)
+                try:
+                    # Sanitise filename: strip path separators and spaces
+                    safe_name = os.path.basename(f.filename).replace(" ", "_")
+                    save_path = os.path.join(prelog_folder, f"{data['deal_code']}_{safe_name}")
+                    f.save(save_path)
+                    saved_files.append(safe_name)
+                    saved_paths.append(save_path)
+                except Exception as fe:
+                    import sys
+                    print(f"[WARN] Could not save prelog file {f.filename}: {fe}", file=sys.stderr)
+                    # Record filename even if disk save failed — metadata still useful
+                    saved_files.append(os.path.basename(f.filename))
 
-    prelog_data = {
-        "deal_code": data.get("deal_code", ""),
-        "consultant_name": data.get("consultant_name", ""),
-        "deposit_amount": float(data.get("deposit_amount", 0)),
-        "customer_names": data.get("customer_names", ""),
-        "notes": data.get("notes", ""),
-        "files": saved_files,
-        "file_paths": saved_paths,
-    }
-    prelog_id = db.save_prelog(prelog_data)
-    return jsonify({"status": "ok", "prelog_id": prelog_id})
+    try:
+        prelog_data = {
+            "deal_code": data.get("deal_code", ""),
+            "consultant_name": data.get("consultant_name", ""),
+            "deposit_amount": float(data.get("deposit_amount") or 0),
+            "customer_names": data.get("customer_names", ""),
+            "notes": data.get("notes", ""),
+            "files": saved_files,
+            "file_paths": saved_paths,
+        }
+        prelog_id = db.save_prelog(prelog_data)
+        return jsonify({"status": "ok", "prelog_id": prelog_id})
+    except Exception as e:
+        import sys, traceback
+        traceback.print_exc(file=sys.stderr)
+        return jsonify({"error": f"Failed to save pre-log: {str(e)}"}), 500
 
 
 @app.route("/api/prelogs/<int:prelog_id>")
