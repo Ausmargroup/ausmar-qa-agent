@@ -50,8 +50,9 @@ def _ensure_db():
             db.init_db()
             _db_ready = True
         except Exception as e:
-            import sys
-            print(f"[WARN] db.init_db() failed: {e}", file=sys.stderr)
+            import sys, traceback
+            traceback.print_exc(file=sys.stderr)
+            raise RuntimeError(f"Database init failed: {e}") from e
 
 
 # ---- Health (no DB touch — used by Railway healthcheck) ----
@@ -366,6 +367,7 @@ def api_export_csv():
 # ---- Pre-logs ----
 @app.route("/api/prelogs")
 def api_prelogs():
+    _ensure_db()
     return jsonify(db.get_all_prelogs())
 
 
