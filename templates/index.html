@@ -263,8 +263,8 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
   <div class="card">
     <h2>Pre-Log Job Info</h2>
     <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Upload the initial deposit packet here (ITP, deposit receipt, driver's licence, signed PSE doc). When the consultant later submits their zip, any files already here will be automatically merged in — so the consultant never needs to include them in their zip.</p>
-    <div class="form-row"><div><label>Deal Code *</label><input id="pl-code" placeholder="e.g. S26TLS"></div><div><label>Consultant</label><input id="pl-consultant" placeholder="e.g. Ian Sullivan"></div></div>
-    <div class="form-row"><div><label>Deposit Amount</label><select id="pl-amount"><option value="0">Select...</option><option value="2500">$2,500 (NHP)</option><option value="4000">$4,000 (STC)</option></select></div><div><label>Customer Name(s)</label><input id="pl-customers" placeholder="e.g. John & Jane Smith"></div></div>
+    <div class="form-row"><div><label>Deal Code *</label><input id="pl-code" placeholder="e.g. S26TLS"></div><div><label>Consultant</label><select id="pl-consultant"><option value="">Select consultant...</option><option value="Andrew">Andrew</option><option value="Caitlyn">Caitlyn</option><option value="Heath">Heath</option><option value="Ian">Ian</option><option value="Johan">Johan</option><option value="Nadia">Nadia</option><option value="Nik">Nik</option><option value="Rod">Rod</option><option value="Telford">Telford</option></select></div></div>
+    <div class="form-row"><div><label>Deposit Amount</label><select id="pl-amount"><option value="0">Select...</option><option value="2500">$2,500 (NHP)</option><option value="4000">$4,000 (STC)</option></select></div></div>
     <div class="form-row full"><div><label>Notes</label><textarea id="pl-notes" rows="2" placeholder="Any relevant notes..."></textarea></div></div>
     <div class="form-row full"><div>
       <label>Attach Files — up to 10 (deposit receipt, ITP, licences, email, etc.)</label>
@@ -752,11 +752,11 @@ async function delPlan(id){
 async function loadPrelogs(){
   const pls=await fetch('/api/prelogs').then(r=>r.json());
   if(!pls.length){$('prelogTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No pre-logged jobs yet.</p>';return}
-  let h='<table class="tbl"><thead><tr><th>Deal Code</th><th>Consultant</th><th>Deposit</th><th>Customer</th><th>Files</th><th>Status</th><th>Date</th></tr></thead><tbody>';
+  let h='<table class="tbl"><thead><tr><th>Deal Code</th><th>Consultant</th><th>Deposit</th><th>Files</th><th>Status</th><th>Date</th></tr></thead><tbody>';
   pls.forEach(p=>{
     const scls=p.status==='matched'?'b-pass':'b-info';
     const fcount=(p.files&&p.files.length)?p.files.length+' file'+(p.files.length>1?'s':''):'—';
-    h+=`<tr><td><strong>${esc(p.deal_code)}</strong></td><td>${esc(p.consultant_name||'-')}</td><td>${p.deposit_amount?'$'+p.deposit_amount.toLocaleString():'-'}</td><td>${esc(p.customer_names||'-')}</td><td style="font-size:0.8rem;color:var(--g500)">${fcount}</td><td><span class="badge ${scls}">${esc(p.status)}</span></td><td>${p.created_at?new Date(p.created_at).toLocaleDateString():'-'}</td></tr>`;
+    h+=`<tr><td><strong>${esc(p.deal_code)}</strong></td><td>${esc(p.consultant_name||'-')}</td><td>${p.deposit_amount?'$'+p.deposit_amount.toLocaleString():'-'}</td><td style="font-size:0.8rem;color:var(--g500)">${fcount}</td><td><span class="badge ${scls}">${esc(p.status)}</span></td><td>${p.created_at?new Date(p.created_at).toLocaleDateString():'-'}</td></tr>`;
   });
   h+='</tbody></table>';
   $('prelogTable').innerHTML=h;
@@ -774,12 +774,11 @@ async function submitPrelog(){
   fd.append('deal_code',code);
   fd.append('consultant_name',$('pl-consultant').value||currentUser?.consultant_name||'');
   fd.append('deposit_amount',$('pl-amount').value);
-  fd.append('customer_names',$('pl-customers').value);
   fd.append('notes',$('pl-notes').value);
   const files=$('pl-files').files;
   for(let i=0;i<files.length;i++)fd.append('file_'+i,files[i]);
   const r=await fetch('/api/prelogs',{method:'POST',body:fd});
-  if(r.ok){const d=await r.json();['pl-code','pl-consultant','pl-customers','pl-notes'].forEach(id=>$(id).value='');$('pl-amount').value='0';$('pl-files').value='';const fl=document.getElementById('pl-file-list');if(fl)fl.textContent='';loadPrelogs();alert('Pre-log saved. When the consultant submits their zip for this deal, any files uploaded here will be automatically merged in.');}else{alert('Failed to save pre-log. Check the deal code and try again.');}
+  if(r.ok){const d=await r.json();['pl-code','pl-notes'].forEach(id=>$(id).value='');$('pl-consultant').value='';$('pl-amount').value='0';$('pl-files').value='';const fl=document.getElementById('pl-file-list');if(fl)fl.textContent='';loadPrelogs();alert('Pre-log saved. When the consultant submits their zip for this deal, any files uploaded here will be automatically merged in.');}else{alert('Failed to save pre-log. Check the deal code and try again.');}
 }
 
 async function wipeHistory(){

@@ -413,7 +413,6 @@ def api_add_prelog():
             "deal_code": data.get("deal_code", ""),
             "consultant_name": data.get("consultant_name", ""),
             "deposit_amount": float(data.get("deposit_amount") or 0),
-            "customer_names": data.get("customer_names", ""),
             "notes": data.get("notes", ""),
             "files": saved_files,
             "file_paths": saved_paths,
@@ -438,14 +437,22 @@ def api_prelog_detail(prelog_id):
 def api_update_prelog(prelog_id):
     _ensure_db()
     data = request.get_json() or {}
-    allowed = ["consultant_name", "notes", "deposit_amount", "customer_names", "deal_code"]
+    allowed = ["consultant_name", "notes", "deposit_amount", "deal_code"]
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
     conn = db.get_db()
-    sets = ", ".join(f"{k}=?" for k in updates)
-    vals = list(updates.values()) + [prelog_id]
-    conn.execute(f"UPDATE prelogs SET {sets}, updated_at=datetime('now') WHERE id=?", vals)
+    if os.environ.get("DATABASE_URL"):
+        ph = "%s"
+        ts = "NOW()"
+        sets = ", ".join(f"{k}={ph}" for k in updates)
+        vals = list(updates.values()) + [prelog_id]
+        cur = conn.cursor()
+        cur.execute(f"UPDATE prelogs SET {sets}, updated_at={ts} WHERE id={ph}", vals)
+    else:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [prelog_id]
+        conn.execute(f"UPDATE prelogs SET {sets}, updated_at=datetime('now') WHERE id=?", vals)
     conn.commit()
     conn.close()
     return jsonify({"status": "ok", "updated": list(updates.keys())})
@@ -466,13 +473,19 @@ def api_wipe_history():
         return jsonify({"error": "Admin access required"}), 403
     try:
         conn = db.get_db()
-        # Disable FK checks, delete child tables first, then parent
-        conn.execute("PRAGMA foreign_keys=OFF")
-        conn.execute("DELETE FROM feedback")
-        conn.execute("DELETE FROM pending_reviews")
-        conn.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
-        conn.execute("DELETE FROM reviews")
-        conn.execute("PRAGMA foreign_keys=ON")
+        if os.environ.get("DATABASE_URL"):
+            cur = conn.cursor()
+            cur.execute("DELETE FROM feedback")
+            cur.execute("DELETE FROM pending_reviews")
+            cur.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
+            cur.execute("DELETE FROM reviews")
+        else:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("DELETE FROM feedback")
+            conn.execute("DELETE FROM pending_reviews")
+            conn.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
+            conn.execute("DELETE FROM reviews")
+            conn.execute("PRAGMA foreign_keys=ON")
         conn.commit()
         conn.close()
         return jsonify({"ok": True, "message": "All review history wiped."})
