@@ -438,7 +438,7 @@ def api_prelog_detail(prelog_id):
 def api_update_prelog(prelog_id):
     _ensure_db()
     data = request.get_json() or {}
-    allowed = ["consultant_name", "notes", "deposit_amount", "customer_names"]
+    allowed = ["consultant_name", "notes", "deposit_amount", "customer_names", "deal_code"]
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400
