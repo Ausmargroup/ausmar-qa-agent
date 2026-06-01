@@ -61,17 +61,6 @@ def health():
     return "ok", 200
 
 
-@app.route("/api/debug-init")
-def debug_init():
-    """Temporary debug endpoint — shows DB init error. Remove after fix."""
-    try:
-        db.init_db()
-        return "DB init OK", 200
-    except Exception as e:
-        import traceback
-        return f"DB init FAILED:\n{traceback.format_exc()}", 500
-
-
 def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes=""):
     """Background thread: runs the full QA review and updates status in DB."""
     try:
