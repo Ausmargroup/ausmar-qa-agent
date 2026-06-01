@@ -18,7 +18,9 @@ if _DATABASE_URL:
 
     def get_db():
         """Return a new psycopg2 connection with RealDictCursor as default cursor."""
-        conn = psycopg2.connect(_DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        # Railway sometimes provides postgres:// but psycopg2 requires postgresql://
+        url = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
         conn.autocommit = False
         return conn
 
