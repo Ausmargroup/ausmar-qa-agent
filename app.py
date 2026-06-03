@@ -463,36 +463,11 @@ def api_update_prelog(prelog_id):
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
 
-# ---- Admin: Wipe all reviews, feedback, pending_reviews (keep plans, access_codes, prelogs) ----
+# ---- Admin: Wipe endpoint DISABLED — review history is a permanent training record ----
 @app.route("/api/admin/wipe-history", methods=["POST"])
 def api_wipe_history():
-    """Wipe all review history and feedback. Requires admin access code."""
-    data = request.get_json() or {}
-    code = data.get("code", "").strip().upper()
-    # Verify it's an admin code
-    user = db.get_access_code(code) if code else None
-    if not user or "admin" not in (user.get("consultant_name") or "").lower():
-        return jsonify({"error": "Admin access required"}), 403
-    try:
-        conn = db.get_db()
-        if os.environ.get("DATABASE_URL"):
-            cur = conn.cursor()
-            cur.execute("DELETE FROM feedback")
-            cur.execute("DELETE FROM pending_reviews")
-            cur.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
-            cur.execute("DELETE FROM reviews")
-        else:
-            conn.execute("PRAGMA foreign_keys=OFF")
-            conn.execute("DELETE FROM feedback")
-            conn.execute("DELETE FROM pending_reviews")
-            conn.execute("UPDATE prelogs SET matched_review_id=NULL, status='pending'")
-            conn.execute("DELETE FROM reviews")
-            conn.execute("PRAGMA foreign_keys=ON")
-        conn.commit()
-        conn.close()
-        return jsonify({"ok": True, "message": "All review history wiped."})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """Permanently disabled — review history must never be deleted (training record)."""
+    return jsonify({"error": "Review history deletion is permanently disabled. Reviews are a required training record and must not be deleted."}), 403
 
 
 @app.route("/api/debug/stats")
