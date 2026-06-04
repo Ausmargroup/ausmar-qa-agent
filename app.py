@@ -289,6 +289,30 @@ def api_delete_plan(plan_id):
     db.delete_plan(plan_id)
     return jsonify({"status": "ok"})
 
+@app.route("/api/plans/<int:plan_id>", methods=["PATCH"])
+def api_update_plan(plan_id):
+    _ensure_db()
+    data = request.get_json() or {}
+    allowed = ["name", "min_width", "min_length", "total_area", "width_incl_eaves", "house_width"]
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+    conn = db.get_db()
+    if os.environ.get("DATABASE_URL"):
+        ph = "%s"
+        ts = "NOW()"
+        sets = ", ".join(f"{k}={ph}" for k in updates)
+        vals = list(updates.values()) + [plan_id]
+        cur = conn.cursor()
+        cur.execute(f"UPDATE plans SET {sets}, updated_at={ts} WHERE id={ph}", vals)
+    else:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [plan_id]
+        conn.execute(f"UPDATE plans SET {sets}, updated_at=datetime('now') WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "updated": list(updates.keys())})
+
 
 # ---- Access Codes ----
 @app.route("/api/access-codes")
