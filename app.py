@@ -233,6 +233,39 @@ def api_review_detail(review_id):
     return jsonify(review)
 
 
+@app.route("/api/reviews/<int:review_id>", methods=["PATCH"])
+def api_update_review(review_id):
+    """Admin-only correction of review metadata (currently deal_code only).
+
+    Reviews are permanent training records and are never deleted, but the
+    deal_code can be corrected when a consultant's zip was mis-named and the
+    code was extracted incorrectly. Requires the admin access code.
+    """
+    _ensure_db()
+    data = request.get_json() or {}
+    code = (data.get("code") or "").strip().upper()
+    acc = db.get_access_code(code) if code else None
+    if not acc or "admin" not in (acc.get("consultant_name") or "").lower():
+        return jsonify({"error": "Admin access code required"}), 403
+    allowed = ["deal_code"]
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({"error": "No valid fields to update"}), 400
+    conn = db.get_db()
+    if os.environ.get("DATABASE_URL"):
+        sets = ", ".join(f"{k}=%s" for k in updates)
+        vals = list(updates.values()) + [review_id]
+        cur = conn.cursor()
+        cur.execute(f"UPDATE reviews SET {sets} WHERE id=%s", vals)
+    else:
+        sets = ", ".join(f"{k}=?" for k in updates)
+        vals = list(updates.values()) + [review_id]
+        conn.execute(f"UPDATE reviews SET {sets} WHERE id=?", vals)
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok", "updated": list(updates.keys())})
+
+
 @app.route("/api/stats")
 def api_stats():
     return jsonify(db.get_review_stats())
