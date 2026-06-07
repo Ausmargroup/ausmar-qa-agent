@@ -1015,7 +1015,13 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     """
     ext = Path(file_info["name"]).suffix.lower()
     text_lower = text_content.lower() if text_content else ""
-    fn_lower = file_info["name"].lower()
+    # Normalize separators so filename hints match regardless of whether the
+    # consultant used spaces, underscores, or hyphens. e.g.
+    # "S26LAR2_Intention_to_Purchase.pdf" -> "s26lar2 intention to purchase.pdf"
+    # This is critical: deal-code prefixes and zip exports frequently use
+    # underscores, which previously caused ITP/other filename hints to miss.
+    _raw_fn_lower = file_info["name"].lower()
+    fn_lower = re.sub(r"[_\-]+", " ", _raw_fn_lower)
 
     # --- Tier 0: .docx files — extract text via python-docx if available ---
     if ext == ".docx":
@@ -1140,10 +1146,11 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     # These patterns are based on real AUSMAR consultant naming conventions.
     # Confidence is 0.75 — strong enough to use, but vision can override.
     FILENAME_HINTS = [
-        # ITP
-        (["intention to purchase", "itp form", "itp -", "- itp"], "itp"),
+        # ITP — separators are normalized to spaces, so "itp" with word boundaries
+        # is matched via the spaced forms below.
+        (["intention to purchase", "itp form", "itp ", " itp"], "itp"),
         # PSE Doc — also match bare 'pse' filename (scanned PSE PDFs often named PSE.pdf)
-        (["provisional sales estimate", "pse doc", "pse -", "- pse", "pse signed", "pse.pdf"], "pse_doc"),
+        (["provisional sales estimate", "pse doc", "pse ", " pse", "pse signed", "pse.pdf"], "pse_doc"),
         # GeoSite
         (["geosite", "geo site", "geo plan", "geosite plan"], "geosite"),
         # Red Pen
@@ -1157,7 +1164,7 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Deposit Receipt
         (["deposit remit", "deposit receipt", "remittance", "receipt"], "deposit_receipt"),
         # Drivers Licence
-        (["drivers licence", "driver licence", "drivers license", "driver license", "dl -", "- dl "], "drivers_licence"),
+        (["drivers licence", "driver licence", "drivers license", "driver license", "dl ", " dl "], "drivers_licence"),
         # POD / Building Envelope
         (["pod", "building envelope", "envelope plan"], "pod_envelope"),
         # Covenant Application
@@ -1409,12 +1416,35 @@ def check_file_structure(extract_dir: str, zip_name: str) -> dict:
                 except Exception:
                     pass
 
-    # Extract deal code from zip name (no warning — consultants name zips inconsistently)
+    # Extract deal code (no warning — consultants name zips inconsistently).
+    # Deal codes look like S26LAR, S26LAR2, S26AM, S26ABJHM — a letter, two
+    # digits, 2-6 letters, optionally followed by trailing digits (e.g. "2").
+    # IMPORTANT: the trailing-digit suffix is part of the code (S26LAR2 != S26LAR).
+    _DEAL_CODE_RE = re.compile(r'[A-Za-z]\d{2}[A-Za-z]{2,6}\d*')
     zip_stem = Path(zip_name).stem
-    # Try to extract deal code pattern from the zip name even if it has extra words
-    deal_code_match = re.search(r'[A-Za-z]\d{2}[A-Za-z]{2,6}', zip_stem)
-    if deal_code_match:
-        zip_stem = deal_code_match.group(0)
+
+    deal_code = None
+    # Pass 1: try the zip name itself
+    m = _DEAL_CODE_RE.search(zip_stem)
+    if m:
+        deal_code = m.group(0).upper()
+    else:
+        # Pass 2: zip name has no deal-code pattern (e.g. "Acoustic Report.zip").
+        # Scan the contained file names for a deal-code prefix — AUSMAR consultants
+        # commonly prefix every document with the deal code (e.g. S26LAR2_ITP.pdf).
+        # Pick the most frequent code found across the files to avoid stray matches.
+        from collections import Counter
+        found = []
+        for f in files:
+            fm = _DEAL_CODE_RE.search(Path(f["name"]).stem)
+            if fm:
+                found.append(fm.group(0).upper())
+        if found:
+            deal_code = Counter(found).most_common(1)[0][0]
+
+    # Final fallback: use the cleaned zip stem so the review still saves,
+    # but only if we genuinely couldn't find a code anywhere.
+    zip_stem = deal_code if deal_code else zip_stem
 
     # Remove junk files
     cleaned_files = []

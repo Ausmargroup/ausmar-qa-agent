@@ -25,8 +25,24 @@ if _DATABASE_URL:
         return conn
 
     def _exec(conn, sql, params=()):
-        """Execute a query on conn. Translates ? → %s for compatibility."""
+        """Execute a query on conn.
+
+        Placeholder handling: queries here use either '?' (SQLite-style,
+        translated to '%s') or '%s' directly. psycopg2 treats every '%' in
+        the SQL string as a parameter marker, so literal '%' characters
+        (e.g. inside "LIKE '%NOT ACCEPTED%'") must be escaped to '%%' — but
+        WITHOUT escaping the real '%s' placeholders. We protect '%s' first,
+        escape remaining bare '%', then restore the placeholders.
+        """
+        # 1) Translate SQLite '?' placeholders to psycopg2 '%s'
         pg_sql = sql.replace("?", "%s")
+        # 2) Protect real '%s' placeholders
+        _SENTINEL = "\x00PARAM\x00"
+        pg_sql = pg_sql.replace("%s", _SENTINEL)
+        # 3) Escape any remaining literal '%' (e.g. LIKE patterns) to '%%'
+        pg_sql = pg_sql.replace("%", "%%")
+        # 4) Restore the placeholders
+        pg_sql = pg_sql.replace(_SENTINEL, "%s")
         cur = conn.cursor()
         cur.execute(pg_sql, params)
         return cur
