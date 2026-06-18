@@ -1,8 +1,33 @@
-# AUSMAR PSE QA Agent
+# AUSMAR QA Agent
 
-Automated QA review system for AUSMAR PSE (Pre-Start Estimate) deposit submissions. Upload a zip file, get a detailed QA verdict back with auto-corrections applied.
+Automated QA across the AUSMAR sales-to-contract pipeline. What began as the PSE deposit QA tool (Stage 1) now runs three sequential stages, all in one app, sharing one database, one rule library, and one self-learning feedback system. **Stage 1 is unchanged** — Stages 2 and 3 are additive.
 
-## What It Does
+## The Three Stages
+
+| Stage | Trigger | Checks | Inputs | Verdicts |
+|-------|---------|--------|--------|----------|
+| **Stage 1 — PSE / Deposit QA** | At deposit | Original PSE submission QA (unchanged) | Deal-code `.zip` | ACCEPTED / NOT ACCEPTED |
+| **Stage 2 — NHP Review** | After estimating produces the NHP | Every signed VO carried into the Final NHP, amounts match, total reconciles | NHP Changes PDF + Final NHP PDF | PASS / REVIEW REQUIRED / FAIL |
+| **Stage 3 — Pre-Contract QA** | Before issuing the contract | Two-pass check that the contract pack matches the signed source, itemised by spec section + drawing page | Signed source + contract spec + contract pricing + working drawings (+ optional VOs/red pen) | READY TO ISSUE / ISSUE WITH NOTED ITEMS / ISSUE AFTER CORRECTIONS / DO NOT ISSUE / PARKED |
+
+### Stage 2 — NHP Review
+The AI extracts the VO register and the Final NHP pricing lines, but **all dollar matching and total reconciliation are done deterministically in Python** so the verdict never depends on LLM arithmetic. Missing VOs are Critical (FAIL); amount mismatches are High (REVIEW REQUIRED). Base + net signed VO movement is reconciled against the Final NHP grand total; any gap is flagged with the exact dollar amount. If amounts or totals can't be read with confidence, the item is flagged for human review — never silently passed.
+
+### Stage 3 — Pre-Contract QA
+**Pass 1 (automatic):** compares the signed source against the contract spec and pricing text — VO carry-through, debit/credit matching, deleted items still listed, pricing-vs-spec contradictions, metadata. **Pass 2 (AI-assisted drawing review):** a vision model reads the working-drawing pages and points the reviewer to likely issues per sheet. Every Pass 2 finding is tagged **"Confirm on drawing"** — the tool locates the issue, a human confirms it. If any required document is absent, the job returns **PARKED** rather than a misleading pass.
+
+## Self-Learning Rule Library (no developer required)
+
+Every Stage 2/3 check comes from a rule stored in the database and editable entirely through the UI:
+
+- **Rules tab** (admin code) — change a rule's severity, switch a rule on/off, add an **exclusion** (text telling a rule what it must *not* flag — injected straight into the AI prompt on the next review), or add a brand-new rule in plain English.
+- **Learning tab** — lists every issue staff marked **False Positive** or **Not Applicable**, so admins can decide what to exclude or down-rank. This is how the tool improves over time with zero code changes.
+- **Rule history** — every rule change is logged (who/what/when) as a permanent audit trail.
+- Seeded with 28 rules (6 Stage 2 pricing/reconciliation rules, 22 Stage 3 spec/drawing/electrical/wet-area rules) extracted from AUSMAR documentation.
+
+A built-in plain-English guide for non-technical staff is served at **`/docs`** (also linked as **Help** in the nav).
+
+## What Stage 1 Does (unchanged)
 
 - **Plan-to-Lot Fit Verification** — extracts lot dimensions from GeoSite PDFs via AI vision, compares against known plan minimum widths
 - **GeoSite Verification** — checks authenticity, required elements (contours, setbacks, north arrow, scale)
@@ -128,20 +153,27 @@ sudo systemctl start ausmar-qa
 
 ```
 ausmar-qa-agent/
-├── app.py              # Flask routes and API endpoints
-├── qa_engine.py        # Full QA review pipeline with auto-fix
-├── database.py         # SQLite models and queries
+├── app.py                  # Flask routes — Stage 1/2/3, rules admin, learning, /docs
+├── qa_engine.py            # Stage 1 PSE QA pipeline with auto-fix (unchanged)
+├── nhp_engine.py           # Stage 2 NHP review engine (VO reconciliation)
+├── contract_qa_engine.py   # Stage 3 two-pass pre-contract QA engine
+├── engine_common.py        # Shared PDF extraction + LLM helpers for Stage 2/3
+├── database.py             # Stage 1 schema/helpers (Postgres + SQLite, unchanged)
+├── db_v2.py                # Stage 2/3 + rule-library tables, helpers, seed data
 ├── templates/
-│   └── index.html      # Frontend (single-page app)
-├── Dockerfile          # Docker build config
-├── docker-compose.yml  # Docker Compose for self-hosting
-├── requirements.txt    # Python dependencies
-├── Procfile            # For Heroku/Railway
-├── railway.json        # Railway config
-├── render.yaml         # Render Blueprint config
-├── extracted_rules.md  # Reference: all QA rules extracted from AUSMAR docs
-└── data/               # SQLite database (created at runtime)
+│   ├── index.html          # Frontend (single-page app, all stages)
+│   └── docs.html           # Plain-English how-to guide (served at /docs)
+├── ARCHITECTURE_V2.md      # V2 technical specification
+├── Dockerfile              # Docker build config
+├── docker-compose.yml      # Docker Compose for self-hosting
+├── requirements.txt        # Python dependencies
+├── railway.json            # Railway config
+├── render.yaml             # Render Blueprint config
+├── extracted_rules.md      # Reference: QA rules extracted from AUSMAR docs
+└── data/                   # SQLite database + uploads (created at runtime)
 ```
+
+The V2 tables (`qa_rules`, `rule_exclusions`, `rule_history`, `contract_reviews`, `contract_issues`) are created idempotently on boot by `db_v2.init_v2()` in **both** the Postgres (Railway) and SQLite (local) backends. Existing Stage 1 tables in `database.py` are never altered.
 
 ## Cost
 

@@ -13,6 +13,11 @@ from flask import Flask, request, jsonify, render_template, send_file, send_from
 import database as db
 from qa_engine import run_qa_review
 
+# V2 — Stage 2/3 engines and rule library (additive; Stage 1 untouched)
+import db_v2
+import nhp_engine
+import contract_qa_engine
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 
@@ -37,7 +42,9 @@ app.config["UPLOAD_FOLDER"] = os.path.join(_DATA_DIR, "uploads")
 app.config["CORRECTED_FOLDER"] = os.path.join(_DATA_DIR, "corrected_zips")
 app.config["PRELOG_FOLDER"] = os.path.join(_DATA_DIR, "prelog_uploads")
 
-for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"]]:
+app.config["STAGE_FOLDER"] = os.path.join(_DATA_DIR, "stage_uploads")
+
+for d in [app.config["UPLOAD_FOLDER"], app.config["CORRECTED_FOLDER"], app.config["PRELOG_FOLDER"], app.config["STAGE_FOLDER"]]:
     os.makedirs(d, exist_ok=True)
 
 # Lazy DB init — called on first real request so a locked/corrupt Volume never blocks startup.
@@ -48,6 +55,7 @@ def _ensure_db():
     if not _db_ready:
         try:
             db.init_db()
+            db_v2.init_v2()  # create V2 tables + seed rule library (idempotent)
             _db_ready = True
         except Exception as e:
             import sys, traceback
@@ -517,9 +525,6 @@ def api_update_prelog(prelog_id):
     return jsonify({"status": "ok", "updated": list(updates.keys())})
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
-
 # ---- Admin: Wipe endpoint DISABLED — review history is a permanent training record ----
 @app.route("/api/admin/wipe-history", methods=["POST"])
 def api_wipe_history():
@@ -534,3 +539,252 @@ def api_debug_stats():
         return jsonify(db.get_review_stats())
     except Exception as e:
         return jsonify({"error": str(e), "traceback": tb.format_exc()}), 500
+
+
+# ===========================================================================
+# V2 — STAGE 2 (NHP Review) / STAGE 3 (Pre-Contract QA) / RULES / LEARNING
+# Additive only. None of the Stage 1 routes above are modified.
+# ===========================================================================
+
+def _is_admin(code):
+    """Reuse the Stage 1 admin convention: access code whose consultant_name
+    contains 'admin'."""
+    if not code:
+        return False
+    acc = db.get_access_code((code or "").strip().upper())
+    return bool(acc and "admin" in (acc.get("consultant_name") or "").lower())
+
+
+def _save_stage_uploads(prefix):
+    """Save uploaded files into the stage_uploads folder, returning {field: path}.
+    Files are sent under named form keys so each maps to a known document role."""
+    saved = {}
+    folder = app.config["STAGE_FOLDER"]
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except Exception:
+        pass
+    for key in request.files.keys():
+        f = request.files.get(key)
+        if f and f.filename:
+            safe = os.path.basename(f.filename).replace(" ", "_")
+            path = os.path.join(folder, f"{prefix}_{key}_{safe}")
+            try:
+                f.save(path)
+                saved[key] = path
+            except Exception as e:
+                print(f"[WARN] could not save stage upload {key}: {e}")
+    return saved
+
+
+# ---- Stage 2: NHP Review (async) ----
+def _run_nhp_background(pending_id, paths, deal_code, consultant_name):
+    try:
+        result = nhp_engine.run_nhp_review(
+            paths.get("nhp_changes"), paths.get("final_nhp"),
+            deal_code=deal_code, consultant_name=consultant_name,
+            progress_cb=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+        )
+        review_id = db_v2.save_contract_review({
+            "deal_code": result.get("deal_code", ""),
+            "stage": 2,
+            "consultant_name": consultant_name,
+            "verdict": result.get("verdict", ""),
+            "verdict_reason": result.get("verdict_reason", ""),
+            "result_payload": result,
+            "issues": result.get("issues", []),
+        })
+        result["contract_review_id"] = review_id
+        db.complete_pending_review(pending_id, json.dumps(result, default=str), review_id)
+    except Exception as e:
+        traceback.print_exc()
+        db.fail_pending_review(pending_id, f"NHP review failed: {e}")
+    finally:
+        for p in paths.values():
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+
+@app.route("/api/stage2/review", methods=["POST"])
+def api_stage2_review():
+    _ensure_db()
+    paths = _save_stage_uploads("s2")
+    if not paths.get("nhp_changes") or not paths.get("final_nhp"):
+        return jsonify({"error": "Both 'nhp_changes' and 'final_nhp' PDF files are required."}), 400
+    deal_code = (request.form.get("deal_code") or "").strip()
+    consultant_name = (request.form.get("consultant_name") or "").strip()
+    pending_id = str(uuid.uuid4())[:12]
+    db.create_pending_review(pending_id, paths.get("nhp_changes", "nhp"))
+    threading.Thread(target=_run_nhp_background,
+                     args=(pending_id, paths, deal_code, consultant_name), daemon=True).start()
+    return jsonify({"review_id": pending_id, "status": "processing"}), 202
+
+
+# ---- Stage 3: Pre-Contract QA (async) ----
+def _run_stage3_background(pending_id, paths, deal_code, consultant_name, job_category):
+    try:
+        result = contract_qa_engine.run_contract_qa(
+            paths, deal_code=deal_code, consultant_name=consultant_name,
+            job_category=job_category,
+            progress_cb=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+        )
+        review_id = db_v2.save_contract_review({
+            "deal_code": result.get("deal_code", ""),
+            "stage": 3,
+            "consultant_name": consultant_name,
+            "job_category": job_category,
+            "verdict": result.get("verdict", ""),
+            "verdict_reason": result.get("verdict_reason", ""),
+            "result_payload": result,
+            "issues": result.get("issues", []),
+        })
+        result["contract_review_id"] = review_id
+        db.complete_pending_review(pending_id, json.dumps(result, default=str), review_id)
+    except Exception as e:
+        traceback.print_exc()
+        db.fail_pending_review(pending_id, f"Contract QA failed: {e}")
+    finally:
+        for p in paths.values():
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+
+@app.route("/api/stage3/review", methods=["POST"])
+def api_stage3_review():
+    _ensure_db()
+    paths = _save_stage_uploads("s3")
+    deal_code = (request.form.get("deal_code") or "").strip()
+    consultant_name = (request.form.get("consultant_name") or "").strip()
+    job_category = (request.form.get("job_category") or "").strip()
+    pending_id = str(uuid.uuid4())[:12]
+    db.create_pending_review(pending_id, paths.get("contract_spec", "contract"))
+    threading.Thread(target=_run_stage3_background,
+                     args=(pending_id, paths, deal_code, consultant_name, job_category), daemon=True).start()
+    return jsonify({"review_id": pending_id, "status": "processing"}), 202
+
+
+# Stage 2/3 reuse the existing /api/review/<id>/status polling endpoint, since
+# both write to pending_reviews via the same create/update/complete helpers.
+
+
+# ---- Stage 2/3 history ----
+@app.route("/api/contract-reviews")
+def api_contract_reviews():
+    _ensure_db()
+    stage = request.args.get("stage", type=int)
+    rows = db_v2.get_contract_reviews(stage=stage)
+    for r in rows:
+        r.pop("result_payload", None)  # keep list light
+    return jsonify(rows)
+
+
+@app.route("/api/contract-reviews/<int:review_id>")
+def api_contract_review_detail(review_id):
+    _ensure_db()
+    cr = db_v2.get_contract_review(review_id)
+    if not cr:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(cr)
+
+
+# ---- Issue status (Open / In Review / Fixed / Accepted Exception / False Positive / Not Applicable) ----
+@app.route("/api/issues/<int:issue_id>/status", methods=["PATCH"])
+def api_update_issue_status(issue_id):
+    _ensure_db()
+    data = request.get_json() or {}
+    status = (data.get("status") or "").strip()
+    if not status:
+        return jsonify({"error": "status required"}), 400
+    db_v2.update_issue_status(issue_id, status, data.get("note", ""))
+    return jsonify({"status": "ok"})
+
+
+# ===========================================================================
+# RULES ADMIN (UI-driven self-learning — no developer required)
+# ===========================================================================
+@app.route("/api/rules")
+def api_rules():
+    _ensure_db()
+    stage = request.args.get("stage")  # 'Stage 2' | 'Stage 3' | None
+    active_only = request.args.get("active_only") == "1"
+    return jsonify(db_v2.get_rules(stage=stage, active_only=active_only))
+
+
+@app.route("/api/rules", methods=["POST"])
+def api_add_rule():
+    _ensure_db()
+    data = request.get_json() or {}
+    if not _is_admin(data.get("code")):
+        return jsonify({"error": "Admin access code required"}), 403
+    if not data.get("category") or not data.get("description"):
+        return jsonify({"error": "category and description required"}), 400
+    rid = db_v2.add_rule(
+        category=data["category"].strip(),
+        description=data["description"].strip(),
+        severity=data.get("severity", "Medium"),
+        stage_applicability=data.get("stage_applicability", "Stage 3"),
+        changed_by=data.get("submitted_by", ""),
+        rule_ref=data.get("rule_ref", ""),
+    )
+    return jsonify({"status": "ok", "rule_id": rid})
+
+
+@app.route("/api/rules/<int:rule_id>", methods=["PATCH"])
+def api_update_rule(rule_id):
+    _ensure_db()
+    data = request.get_json() or {}
+    if not _is_admin(data.get("code")):
+        return jsonify({"error": "Admin access code required"}), 403
+    fields = {k: v for k, v in data.items()
+              if k in ("severity", "active", "category", "description", "stage_applicability")}
+    if not fields:
+        return jsonify({"error": "No valid fields to update"}), 400
+    db_v2.update_rule(rule_id, fields, changed_by=data.get("submitted_by", ""))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/rules/<int:rule_id>/exclusions", methods=["POST"])
+def api_add_exclusion(rule_id):
+    _ensure_db()
+    data = request.get_json() or {}
+    if not _is_admin(data.get("code")):
+        return jsonify({"error": "Admin access code required"}), 403
+    text = (data.get("exclusion_text") or "").strip()
+    if not text:
+        return jsonify({"error": "exclusion_text required"}), 400
+    db_v2.add_exclusion(rule_id, text, created_by=data.get("submitted_by", ""))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/rules/<int:rule_id>/history")
+def api_rule_history(rule_id):
+    _ensure_db()
+    return jsonify(db_v2.get_rule_history(rule_id))
+
+
+# ===========================================================================
+# LEARNING PANEL
+# ===========================================================================
+@app.route("/api/learning/false-positives")
+def api_learning_fps():
+    _ensure_db()
+    days = request.args.get("days", default=30, type=int)
+    return jsonify(db_v2.get_recent_false_positive_issues(days))
+
+
+# ===========================================================================
+# DOCS PAGE
+# ===========================================================================
+@app.route("/docs")
+def docs_page():
+    return render_template("docs.html")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)

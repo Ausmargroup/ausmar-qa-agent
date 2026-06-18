@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AUSMAR QA Agent — How to Use</title>
+<style>
+:root{--p:#1a3a5c;--acc:#c0392b;--grn:#276749;--blu:#2b6cb0;--g100:#e2e8f0;--g500:#718096;--bg:#f7fafc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:#1a202c;line-height:1.55;padding:0 0 4rem}
+.hdr{background:var(--p);color:#fff;padding:1.25rem 1.5rem}
+.hdr h1{font-size:1.3rem}
+.hdr .sub{font-size:0.85rem;opacity:0.85;margin-top:0.2rem}
+.wrap{max-width:860px;margin:1.5rem auto;padding:0 1.25rem}
+.card{background:#fff;border:1px solid var(--g100);border-radius:8px;padding:1.25rem 1.5rem;margin-bottom:1.25rem}
+h2{font-size:1.1rem;color:var(--p);margin-bottom:0.6rem;padding-bottom:0.35rem;border-bottom:2px solid var(--g100)}
+h3{font-size:0.95rem;color:var(--p);margin:0.9rem 0 0.35rem}
+p,li{font-size:0.9rem;margin-bottom:0.5rem}
+ul,ol{padding-left:1.3rem}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:0.72rem;font-weight:700;color:#fff}
+.t1{background:var(--blu)}.t2{background:#d4a017}.t3{background:var(--grn)}
+.sev{display:inline-block;padding:1px 7px;border-radius:10px;font-size:0.7rem;font-weight:700;color:#fff}
+.s-crit{background:#c0392b}.s-high{background:#e67e22}.s-med{background:#d4a017}.s-low{background:#3498db}.s-obs{background:#7f8c8d}
+table{width:100%;border-collapse:collapse;margin:0.5rem 0;font-size:0.85rem}
+th,td{text-align:left;padding:0.45rem 0.6rem;border-bottom:1px solid var(--g100);vertical-align:top}
+th{background:#f1f5f9;color:var(--p)}
+.note{background:#fffbea;border-left:3px solid #d4a017;padding:0.6rem 0.85rem;border-radius:0 5px 5px 0;font-size:0.85rem;margin:0.6rem 0}
+.warn{background:#fff5f5;border-left:3px solid var(--acc);padding:0.6rem 0.85rem;border-radius:0 5px 5px 0;font-size:0.85rem;margin:0.6rem 0}
+a.back{display:inline-block;margin-top:0.5rem;color:#fff;text-decoration:none;font-size:0.82rem;opacity:0.9}
+code{background:#edf2f7;padding:1px 5px;border-radius:3px;font-size:0.82rem}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>AUSMAR QA Agent — How to Use</h1>
+  <div class="sub">Sales-to-Contract QA Pipeline · plain-English guide for sales, contracts admin, and estimating</div>
+  <a class="back" href="/">&larr; Back to the tool</a>
+</div>
+<div class="wrap">
+
+<div class="card">
+  <h2>What this tool does</h2>
+  <p>It is a quality-control checker for the journey from a signed deposit to an issued contract. It reads the documents, compares what was <strong>signed</strong> against what the <strong>contract output</strong> says, and gives you an itemised list of anything that doesn't match — so nothing is missed before a contract goes to the client.</p>
+  <p>It runs in three stages. Each stage is a separate tab at the top of the screen.</p>
+  <table>
+    <tr><th>Stage</th><th>When you use it</th><th>What it checks</th></tr>
+    <tr><td><span class="tag t1">Stage 1: PSE</span></td><td>At deposit time</td><td>The original deposit submission QA (unchanged from before). Upload the deal-code zip, get a verdict and corrected zip.</td></tr>
+    <tr><td><span class="tag t2">Stage 2: NHP</span></td><td>After estimating produces the NHP</td><td>Confirms every signed variation (VO) made it into the Final NHP pricing, with matching amounts and a total that reconciles.</td></tr>
+    <tr><td><span class="tag t3">Stage 3: Contract</span></td><td>Before the contract is issued</td><td>Two-pass check that the full contract pack (spec, pricing, drawings) matches the signed source. Itemised by spec section and drawing page.</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>The golden rule: it never guesses</h2>
+  <p>This tool is built to be <strong>cautious</strong>. If something is unclear, it does not pretend to know — it flags it for a human to check. That means:</p>
+  <ul>
+    <li>It would rather miss a borderline item than raise a false alarm.</li>
+    <li>If a document can't be read (e.g. a scanned image with no text), it tells you to review manually instead of passing it.</li>
+    <li>Stage 3 drawing findings are always marked <em>"Confirm on drawing"</em> — the tool points you to the sheet, but a person makes the final call.</li>
+  </ul>
+  <p class="note">Why this matters: a false positive wastes estimating and drafting time and erodes trust in the tool. A flagged "please check" item costs you 30 seconds. So the tool is deliberately tuned to flag-don't-assert.</p>
+</div>
+
+<div class="card">
+  <h2>Stage 1 — PSE / Deposit QA</h2>
+  <p>Unchanged. Drop the deal-code-named <code>.zip</code> (e.g. <code>S26TLS.zip</code>) into the Stage 1 tab and click <strong>Run QA Review</strong>. You get the same verdict, corrected zip, and Heath note as before.</p>
+</div>
+
+<div class="card">
+  <h2>Stage 2 — NHP Review</h2>
+  <h3>What you upload</h3>
+  <ol>
+    <li><strong>NHP Changes document</strong> — the PDF listing the variation orders (additions, deletions, credits, debits).</li>
+    <li><strong>Final NHP PDF</strong> — the pricing document that forms the contract price.</li>
+  </ol>
+  <h3>What you get back</h3>
+  <ul>
+    <li>A count of VOs found, how many matched, how many are missing, and how many have a wrong amount.</li>
+    <li>A <strong>total reconciliation</strong>: base price + the net of all signed VOs should equal the Final NHP total. If it's out, you see the exact dollar gap.</li>
+    <li>An itemised list of every discrepancy, with the signed source, what the NHP says, and the required action.</li>
+  </ul>
+  <h3>Verdicts</h3>
+  <table>
+    <tr><th>Verdict</th><th>Meaning</th></tr>
+    <tr><td><strong>PASS</strong></td><td>Every signed VO carried through with matching amounts and a reconciling total.</td></tr>
+    <tr><td><strong>REVIEW REQUIRED</strong></td><td>Amounts don't match, the total doesn't reconcile, or some items need a human to confirm.</td></tr>
+    <tr><td><strong>FAIL</strong></td><td>One or more signed VOs appear to be missing from the Final NHP. Do not proceed until estimating resolves it.</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Stage 3 — Pre-Contract QA</h2>
+  <h3>What you upload</h3>
+  <p>Stage 3 needs the full picture. The starred items are mandatory — without them the job is <strong>parked</strong> (not passed), because the tool refuses to give a misleading all-clear on incomplete information.</p>
+  <table>
+    <tr><th>Document</th><th>Required?</th></tr>
+    <tr><td>Signed NHP / PSE (the source of truth)</td><td>Yes *</td></tr>
+    <tr><td>Signed VOs / NHP Changes</td><td>Recommended</td></tr>
+    <tr><td>Signed Red Pen markup</td><td>Recommended</td></tr>
+    <tr><td>Contract Specification</td><td>Yes *</td></tr>
+    <tr><td>Contract NHP Pricing</td><td>Yes *</td></tr>
+    <tr><td>Working Drawings</td><td>Yes *</td></tr>
+  </table>
+  <h3>The two passes</h3>
+  <p><strong>Pass 1 (automatic):</strong> compares the signed source against the contract spec and pricing text — VO carry-through, debit/credit matching, credit traceability, deleted items still listed, pricing-vs-spec contradictions, and metadata (names, lot, facade, etc.).</p>
+  <p><strong>Pass 2 (AI-assisted drawing review):</strong> reads the working-drawing pages and points you to likely issues on each sheet — window/door heights, fixture positions, deleted items still drawn, electrical fixture type, clearances. <strong>Every Pass 2 item must be confirmed by you on the actual drawing.</strong></p>
+  <h3>How results are laid out</h3>
+  <p>Issues are grouped by section, matching the QA template Lyana uses — by spec item (e.g. <em>Item 7 Facade</em>) and by drawing page (e.g. <em>Elevations</em>, <em>Ensuite</em>). Each issue shows severity, category, what was signed, what the contract says, the problem, and the required action.</p>
+  <h3>Severity</h3>
+  <p>
+    <span class="sev s-crit">Critical</span> contract must not be issued &nbsp;
+    <span class="sev s-high">High</span> fix before issue &nbsp;
+    <span class="sev s-med">Medium</span> resolve where practical &nbsp;
+    <span class="sev s-low">Low</span> minor &nbsp;
+    <span class="sev s-obs">Observation</span> note to monitor
+  </p>
+  <h3>Verdicts</h3>
+  <table>
+    <tr><th>Verdict</th><th>Meaning</th></tr>
+    <tr><td><strong>READY TO ISSUE</strong></td><td>No discrepancies in Pass 1. Confirm any Pass 2 drawing pointers, then issue.</td></tr>
+    <tr><td><strong>ISSUE WITH NOTED ITEMS</strong></td><td>Only medium/low items. Resolve where practical.</td></tr>
+    <tr><td><strong>ISSUE AFTER CORRECTIONS</strong></td><td>High-priority items must be fixed (or a manager records an exception) first.</td></tr>
+    <tr><td><strong>DO NOT ISSUE</strong></td><td>Critical issues found. Must be fixed or formally accepted by a manager before issue.</td></tr>
+    <tr><td><strong>PARKED</strong></td><td>Required documents are missing. Add them and re-run.</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Marking issues (what each button does)</h2>
+  <p>On any Stage 2/3 result, each issue has action buttons:</p>
+  <ul>
+    <li><strong>Fixed</strong> — the discrepancy has been corrected in the documents.</li>
+    <li><strong>Accept Exception</strong> — a manager has agreed to proceed despite the issue (record the reason). <em>Remember: Josh's call overrides.</em></li>
+    <li><strong>False Positive</strong> — the tool was wrong; this isn't a real issue. This feeds the Learning panel.</li>
+    <li><strong>N/A</strong> — not applicable to this job.</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h2>Rules &amp; Learning — making the tool smarter without a developer</h2>
+  <p>This is the important part: <strong>you can improve the tool yourself.</strong> No code, no developer, no waiting.</p>
+  <h3>Rules tab</h3>
+  <p>Every check the tool makes comes from a rule in the <strong>Rule Library</strong>. With an admin code you can:</p>
+  <ul>
+    <li><strong>Change a severity</strong> — e.g. drop something from High to Medium if it's over-flagging.</li>
+    <li><strong>Switch a rule off</strong> — if a check isn't useful, deactivate it.</li>
+    <li><strong>Add an exclusion</strong> — tell a rule what it should <em>not</em> flag (e.g. "gas cooktops are allowed in all estates"). The exclusion is fed straight into the AI on the next review.</li>
+    <li><strong>Add a brand-new rule</strong> — describe a new check in plain English and pick its stage, category, and severity.</li>
+  </ul>
+  <h3>Learning tab</h3>
+  <p>This lists everything staff have recently marked as <strong>False Positive</strong> or <strong>N/A</strong>. It's your shortlist of what to fix: if the same kind of false positive keeps appearing, go to the Rules tab and add an exclusion or lower the severity. Over a few weeks this is how the tool stops repeating mistakes.</p>
+  <p class="warn">Changes to rules apply to the <strong>next</strong> review, not past ones. Past reviews stay as a permanent record.</p>
+</div>
+
+<div class="card">
+  <h2>Quick FAQ</h2>
+  <h3>The tool says REVIEW REQUIRED but I can't see a dollar problem — why?</h3>
+  <p>It often means an amount or the NHP total couldn't be read with confidence, or a VO matched on amount but the description match was weak. That's the tool being honest rather than guessing. Open the itemised list — each item tells you exactly what to confirm.</p>
+  <h3>Stage 3 parked my job. What now?</h3>
+  <p>One of the four required documents is missing (signed source, contract spec, contract pricing, or working drawings). Add it and re-run.</p>
+  <h3>A drawing issue looks wrong.</h3>
+  <p>Pass 2 items are pointers, not verdicts. If it's wrong, mark it False Positive — that's expected and it helps the Learning panel.</p>
+  <h3>Who can edit rules?</h3>
+  <p>Anyone with an admin access code. Everyone else can run reviews and mark issue status.</p>
+</div>
+
+</div>
+</body>
+</html>

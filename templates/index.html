@@ -154,8 +154,23 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 .heath-flag{background:#fff5f5;border-left:3px solid var(--acc);padding:0.5rem 0.75rem;margin-bottom:0.4rem;border-radius:0 4px 4px 0;font-size:0.82rem}
 .heath-warn{background:#fffff0;border-left:3px solid var(--ylw);padding:0.5rem 0.75rem;margin-bottom:0.4rem;border-radius:0 4px 4px 0;font-size:0.82rem}
 
+/* V2 — Stage 2/3, rules, learning */
+.s3-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin:0.5rem 0}
+.s3-grid label{font-size:0.78rem}
+.sev{display:inline-block;padding:1px 7px;border-radius:10px;font-size:0.68rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.3px}
+.sev-critical{background:#c0392b}.sev-high{background:#e67e22}.sev-medium{background:#d4a017}.sev-low{background:#3498db}.sev-observation{background:#7f8c8d}
+.iss{border:1px solid var(--g100);border-left-width:4px;border-radius:5px;padding:0.6rem 0.75rem;margin-bottom:0.5rem;background:#fff}
+.iss.sb-critical{border-left-color:#c0392b}.iss.sb-high{border-left-color:#e67e22}.iss.sb-medium{border-left-color:#d4a017}.iss.sb-low{border-left-color:#3498db}.iss.sb-observation{border-left-color:#7f8c8d}
+.iss .ihead{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem}
+.iss .iref{font-family:monospace;font-size:0.72rem;color:var(--g500)}
+.iss .irow{font-size:0.82rem;margin:0.15rem 0}
+.iss .irow b{color:var(--p)}
+.iss .iact{display:flex;gap:0.35rem;margin-top:0.45rem;flex-wrap:wrap}
+.sec-head{font-size:0.95rem;color:var(--p);margin:0.9rem 0 0.4rem;padding-bottom:0.25rem;border-bottom:2px solid var(--g100)}
+.hint{background:#f0f7ff;border-left:3px solid var(--blu);padding:0.45rem 0.7rem;border-radius:0 4px 4px 0;font-size:0.8rem;margin:0.4rem 0}
+.recon-tbl td{font-size:0.82rem;padding:0.25rem 0.5rem}
 /* Responsive */
-@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.hdr nav{flex-wrap:wrap}}
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.hdr nav{flex-wrap:wrap}.s3-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -176,15 +191,20 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
 <div id="mainApp" style="display:none">
 
 <div class="hdr">
-  <div><h1>AUSMAR PSE QA Agent</h1><div class="sub">Deposit Submission Review</div></div>
+  <div><h1>AUSMAR QA Agent</h1><div class="sub">Sales-to-Contract QA Pipeline</div></div>
   <div class="hdr-right">
     <nav>
-      <button class="active" onclick="showSection('sec-review',this)">New Review</button>
+      <button class="active" onclick="showSection('sec-review',this)">Stage 1: PSE</button>
+      <button onclick="showSection('sec-stage2',this)">Stage 2: NHP</button>
+      <button onclick="showSection('sec-stage3',this)">Stage 3: Contract</button>
       <button onclick="showSection('sec-history',this);loadHistory()">History</button>
       <button onclick="showSection('sec-reports',this);loadReports()">Reports</button>
       <button onclick="showSection('sec-heath',this);loadHeath()">Heath Dashboard</button>
       <button onclick="showSection('sec-prelog',this);loadPrelogs()">Pre-Log</button>
       <button onclick="showSection('sec-plans',this);loadPlans()">Plans</button>
+      <button onclick="showSection('sec-rules',this);loadRules()">Rules</button>
+      <button onclick="showSection('sec-learning',this);loadLearning()">Learning</button>
+      <button onclick="window.open('/docs','_blank')">Help</button>
       <button onclick="showSection('sec-admin',this);loadAdmin()" id="adminBtn" style="display:none">⚙ Admin</button>
     </nav>
     <span class="user-pill" id="userPill"></span>
@@ -287,6 +307,83 @@ label{font-size:0.8rem;font-weight:600;color:var(--g600);display:block;margin-bo
     <div class="form-row"><div><label>Min Site Length (m) *</label><input id="np-length" type="number" step="0.1"></div><div><label>Total Area (m2)</label><input id="np-area" type="number" step="0.01"></div></div>
     <div class="form-row"><div><label>House Width (m)</label><input id="np-hwidth" type="number" step="0.01"></div></div>
     <button class="btn btn-green" onclick="addPlan()">Add Plan</button>
+  </div>
+</div>
+
+<!-- ============ STAGE 2: NHP REVIEW ============ -->
+<div id="sec-stage2" class="section">
+  <div class="card" id="s2UploadCard">
+    <h2>Stage 2 — NHP Review</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Confirms every signed variation order (VO) carried through to the Final NHP that forms the contract price, with matching debit/credit amounts and a reconciling total. Upload the NHP Changes document and the Final NHP PDF.</p>
+    <div class="form-row"><div><label>Deal Code</label><input id="s2-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant</label><input id="s2-consultant" placeholder="(auto from your code)"></div></div>
+    <div class="form-row"><div>
+      <label>NHP Changes document (PDF with VOs) *</label>
+      <input type="file" id="s2-changes" accept=".pdf">
+    </div><div>
+      <label>Final NHP PDF (contract price) *</label>
+      <input type="file" id="s2-final" accept=".pdf">
+    </div></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:0.5rem" onclick="startStage2()">Run NHP Review</button>
+  </div>
+  <div class="card" id="s2ProgCard" style="display:none">
+    <h2 class="loading" id="s2ProgTitle">Reviewing NHP...</h2>
+    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="s2ProgFill"></div></div></div>
+    <div class="prog-txt" id="s2ProgTxt">Uploading...</div>
+  </div>
+  <div id="s2Results"></div>
+  <div class="card"><h2>Recent NHP Reviews</h2><div id="s2History"></div></div>
+</div>
+
+<!-- ============ STAGE 3: PRE-CONTRACT QA ============ -->
+<div id="sec-stage3" class="section">
+  <div class="card" id="s3UploadCard">
+    <h2>Stage 3 — Pre-Contract QA</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Two-pass check that the final contract pack reflects the signed source before issue. Pass 1 compares pricing &amp; specification; Pass 2 is an AI-assisted drawing review that points the reviewer to sheets needing human confirmation. Output is itemised by spec section and drawing page, matching the QA template. <strong>All three contract documents plus at least one signed source are required</strong> — otherwise the job is parked, not passed.</p>
+    <div class="form-row"><div><label>Deal Code</label><input id="s3-code" placeholder="e.g. S26JRGB2"></div><div><label>Job Category</label><select id="s3-cat"><option value="">Select...</option><option>CAT1 Standard</option><option>CAT2 Minor variations</option><option>CAT3 Major variations</option><option>CAT4 Complex/custom</option></select></div></div>
+    <div class="s3-grid">
+      <div><label>Signed NHP / PSE (source) *</label><input type="file" id="s3-signed_nhp" accept=".pdf"></div>
+      <div><label>Signed VOs / NHP Changes</label><input type="file" id="s3-signed_vos" accept=".pdf"></div>
+      <div><label>Signed Red Pen markup</label><input type="file" id="s3-red_pen" accept=".pdf"></div>
+      <div><label>Contract Specification *</label><input type="file" id="s3-contract_spec" accept=".pdf"></div>
+      <div><label>Contract NHP Pricing *</label><input type="file" id="s3-contract_pricing" accept=".pdf"></div>
+      <div><label>Working Drawings *</label><input type="file" id="s3-working_drawings" accept=".pdf"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startStage3()">Run Contract QA</button>
+  </div>
+  <div class="card" id="s3ProgCard" style="display:none">
+    <h2 class="loading" id="s3ProgTitle">Running contract QA...</h2>
+    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="s3ProgFill"></div></div></div>
+    <div class="prog-txt" id="s3ProgTxt">Uploading...</div>
+  </div>
+  <div id="s3Results"></div>
+  <div class="card"><h2>Recent Contract Reviews</h2><div id="s3History"></div></div>
+</div>
+
+<!-- ============ RULES ADMIN ============ -->
+<div id="sec-rules" class="section">
+  <div class="card">
+    <h2>Rule Library</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
+    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option></select></div></div>
+    <div id="rulesTable"></div>
+  </div>
+  <div class="card" id="addRuleCard">
+    <h2>Add New Rule</h2>
+    <div class="form-row"><div><label>Stage *</label><select id="nr-stage"><option value="Stage 3">Stage 3 (Contract)</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Both">Both</option></select></div><div><label>Category *</label><select id="nr-cat"><option>Pricing</option><option>Specification</option><option>Drawings/Elevations</option><option>Electrical</option><option>Wet Areas</option><option>Joinery</option><option>External</option></select></div></div>
+    <div class="form-row"><div><label>Default Severity</label><select id="nr-sev"><option>Critical</option><option>High</option><option selected>Medium</option><option>Low</option><option>Observation</option></select></div><div><label>Rule reference (optional)</label><input id="nr-ref" placeholder="e.g. P1-PRICE-009"></div></div>
+    <div class="form-row full"><div><label>Rule description (what to check) *</label><textarea id="nr-desc" rows="2" placeholder="e.g. Every signed window/door deletion must be removed from elevations and floor plan notes."></textarea></div></div>
+    <button class="btn btn-green" onclick="addRule()">Add Rule</button>
+    <div id="addRuleMsg" style="font-size:0.8rem;margin-top:0.4rem"></div>
+  </div>
+</div>
+
+<!-- ============ LEARNING PANEL ============ -->
+<div id="sec-learning" class="section">
+  <div class="card">
+    <h2>Learning Panel — Recent False Positives</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Issues staff marked as false positives or not-applicable across Stage 2/3. Use these to decide whether to add an exclusion to a rule (so the tool stops flagging them) or lower a rule's severity. This is how the tool gets more accurate over time — no developer needed.</p>
+    <div class="form-row"><div><label>Window</label><select id="learn-days" onchange="loadLearning()"><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option></select></div></div>
+    <div id="learningTable"></div>
   </div>
 </div>
 
@@ -793,6 +890,191 @@ async function wipeHistory(){
     el.style.color='#e53e3e';
     el.textContent=d.error||'Wipe failed.';
   }
+}
+
+// ===========================================================================
+// V2 — STAGE 2 / STAGE 3 / RULES / LEARNING
+// ===========================================================================
+let s2Poll=null,s3Poll=null;
+const sevClass=s=>'sev-'+(s||'medium').toLowerCase();
+const sbClass=s=>'sb-'+(s||'medium').toLowerCase();
+
+// ---- Shared poller for stage2/3 (uses existing /api/review/<id>/status) ----
+function pollStage(reviewId,fill,txt,title,onDone,which){
+  const t=setInterval(async()=>{
+    try{
+      const d=await fetch(`/api/review/${reviewId}/status`).then(r=>r.json());
+      if(d.status==='processing'){fill.style.width=(d.progress||10)+'%';txt.textContent=d.progress_message||'Processing...';}
+      else if(d.status==='completed'){clearInterval(t);fill.style.width='100%';txt.textContent='Complete.';title.classList.remove('loading');setTimeout(()=>onDone(d.result||{}),400);}
+      else if(d.status==='failed'){clearInterval(t);title.textContent='Failed';title.classList.remove('loading');txt.textContent=d.error||'Review failed';}
+    }catch(e){console.warn('poll',e)}
+  },3000);
+  if(which==='s2')s2Poll=t;else s3Poll=t;
+}
+
+// ---- STAGE 2 ----
+function startStage2(){
+  const ch=$('s2-changes').files[0],fn=$('s2-final').files[0];
+  if(!ch||!fn){alert('Upload BOTH the NHP Changes PDF and the Final NHP PDF.');return}
+  $('s2UploadCard').style.display='none';$('s2ProgCard').style.display='block';$('s2Results').innerHTML='';
+  $('s2ProgFill').style.width='5%';$('s2ProgTitle').classList.add('loading');$('s2ProgTxt').textContent='Uploading...';
+  const fd=new FormData();
+  fd.append('nhp_changes',ch);fd.append('final_nhp',fn);
+  fd.append('deal_code',$('s2-code').value.trim());
+  fd.append('consultant_name',($('s2-consultant').value.trim()||currentUser?.consultant_name||''));
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage2/review');xhr.timeout=180000;
+  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s2ProgFill'),$('s2ProgTxt'),$('s2ProgTitle'),renderStage2,'s2');}else{alert(d.error||'Upload failed');resetStage2();}}catch(e){alert('Upload failed');resetStage2();}};
+  xhr.onerror=()=>{alert('Network error');resetStage2();};
+  xhr.send(fd);
+}
+function resetStage2(){if(s2Poll)clearInterval(s2Poll);$('s2UploadCard').style.display='block';$('s2ProgCard').style.display='none';loadStage2History();}
+
+function renderStage2(d){
+  $('s2ProgCard').style.display='none';
+  let h=verdictBlock(d.verdict,d.verdict_reason);
+  const t=d.totals||{};
+  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}<span>VOs: <strong>${t.vo_count||0}</strong></span><span style="color:var(--grn)">Matched: ${t.matched||0}</span><span style="color:var(--acc)">Missing: ${t.missing||0}</span><span style="color:var(--ylw)">Mismatched: ${t.mismatched||0}</span></div>`;
+  const r=t.reconciliation||{};
+  if(r.checkable){
+    h+=`<div class="card"><h2>Total Reconciliation</h2><table class="recon-tbl"><tr><td>Base price</td><td>$${num(r.base)}</td></tr><tr><td>Net signed VO movement</td><td>$${num(r.vo_net)}</td></tr><tr><td>Expected total</td><td>$${num(r.expected_total)}</td></tr><tr><td>Final NHP total</td><td>$${num(r.grand_total)}</td></tr><tr><td><b>Delta</b></td><td><b style="color:${Math.abs(r.delta)<=1?'var(--grn)':'var(--acc)'}">$${num(r.delta)}</b></td></tr></table></div>`;
+  } else if(r.note){h+=`<div class="hint">${esc(r.note)}</div>`}
+  h+=issuesBySection(d.issues||[],d.contract_review_id);
+  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetStage2()">New NHP Review</button>`;
+  $('s2Results').innerHTML=h;loadStage2History();
+}
+
+async function loadStage2History(){
+  try{const rows=await fetch('/api/contract-reviews?stage=2').then(r=>r.json());$('s2History').innerHTML=histTable(rows);}catch(e){}
+}
+
+// ---- STAGE 3 ----
+const S3_KEYS=['signed_nhp','signed_vos','red_pen','contract_spec','contract_pricing','working_drawings'];
+function startStage3(){
+  const need=['signed_nhp','contract_spec','contract_pricing','working_drawings'];
+  for(const k of need){if(!$('s3-'+k).files[0]){alert('Missing required document: '+k.replace(/_/g,' ')+'. Stage 3 needs the signed source plus all three contract documents, or it parks the job.');return}}
+  $('s3UploadCard').style.display='none';$('s3ProgCard').style.display='block';$('s3Results').innerHTML='';
+  $('s3ProgFill').style.width='5%';$('s3ProgTitle').classList.add('loading');$('s3ProgTxt').textContent='Uploading...';
+  const fd=new FormData();
+  S3_KEYS.forEach(k=>{const f=$('s3-'+k).files[0];if(f)fd.append(k,f);});
+  fd.append('deal_code',$('s3-code').value.trim());
+  fd.append('job_category',$('s3-cat').value);
+  fd.append('consultant_name',currentUser?.consultant_name||'');
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage3/review');xhr.timeout=300000;
+  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s3ProgFill'),$('s3ProgTxt'),$('s3ProgTitle'),renderStage3,'s3');}else{alert(d.error||'Upload failed');resetStage3();}}catch(e){alert('Upload failed');resetStage3();}};
+  xhr.onerror=()=>{alert('Network error');resetStage3();};
+  xhr.send(fd);
+}
+function resetStage3(){if(s3Poll)clearInterval(s3Poll);$('s3UploadCard').style.display='block';$('s3ProgCard').style.display='none';loadStage3History();}
+
+function renderStage3(d){
+  $('s3ProgCard').style.display='none';
+  let h=verdictBlock(d.verdict,d.verdict_reason);
+  const s=d.consultant_summary||{};
+  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}${d.job_category?`<span>${esc(d.job_category)}</span>`:''}<span>Pass 1: ${d.pass1_count||0}</span><span>Pass 2: ${d.pass2_count||0}</span></div>`;
+  if(s.recommendation){h+=`<div class="card"><h2>Consultant Summary</h2><p style="font-size:0.85rem"><strong>Recommendation:</strong> ${esc(s.recommendation)}</p><div class="meta"><span class="sev sev-critical">Critical ${s.critical||0}</span><span class="sev sev-high">High ${s.high||0}</span><span class="sev sev-medium">Medium ${s.medium||0}</span><span class="sev sev-low">Low ${s.low||0}</span><span class="sev sev-observation">Obs ${s.observation||0}</span></div></div>`}
+  h+=`<div class="hint">Pass 2 drawing findings are AI-assisted pointers — each one must be confirmed by a human reviewer on the actual drawing before action.</div>`;
+  h+=issuesBySection(d.issues||[],d.contract_review_id);
+  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetStage3()">New Contract QA</button>`;
+  $('s3Results').innerHTML=h;loadStage3History();
+}
+
+async function loadStage3History(){
+  try{const rows=await fetch('/api/contract-reviews?stage=3').then(r=>r.json());$('s3History').innerHTML=histTable(rows);}catch(e){}
+}
+
+// ---- Shared renderers ----
+function num(v){if(v==null||isNaN(v))return'0.00';return Number(v).toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function verdictBlock(v,reason){
+  const u=(v||'').toUpperCase();
+  let cls='v-error';
+  if(u.includes('PASS')||u.includes('READY'))cls='v-accepted';
+  else if(u.includes('DO NOT')||u.includes('FAIL'))cls='v-not-accepted';
+  else cls='v-error';
+  return `<div class="verdict ${cls}"><div class="vl">QA Verdict</div><div class="vt">${esc(v||'UNKNOWN')}</div><div class="vr">${esc(reason||'')}</div></div>`;
+}
+function issuesBySection(issues,reviewId){
+  if(!issues.length)return`<div class="card"><p style="font-size:0.85rem;color:var(--grn)">No discrepancies found.</p></div>`;
+  const bySec={};issues.forEach(i=>{(bySec[i.section||'General']=bySec[i.section||'General']||[]).push(i)});
+  let h=`<div class="card"><h2>Discrepancies (${issues.length})</h2>`;
+  Object.keys(bySec).forEach(sec=>{
+    h+=`<div class="sec-head">${esc(sec)}</div>`;
+    bySec[sec].forEach(i=>{h+=issueCard(i,reviewId);});
+  });
+  h+=`</div>`;return h;
+}
+function issueCard(i,reviewId){
+  const hc=i.needs_human_confirmation?`<span class="sev sev-observation">Confirm on drawing</span>`:'';
+  let h=`<div class="iss ${sbClass(i.severity)}"><div class="ihead"><span class="sev ${sevClass(i.severity)}">${esc(i.severity||'')}</span><span class="badge b-info">${esc(i.category||'')}</span>${hc}<span class="iref">${esc(i.issue_ref||'')}</span></div>`;
+  if(i.signed_source)h+=`<div class="irow"><b>Signed:</b> ${esc(i.signed_source)}</div>`;
+  if(i.contract_output)h+=`<div class="irow"><b>Contract:</b> ${esc(i.contract_output)}</div>`;
+  if(i.discrepancy)h+=`<div class="irow"><b>Issue:</b> ${esc(i.discrepancy)}</div>`;
+  if(i.required_action)h+=`<div class="irow"><b>Action:</b> ${esc(i.required_action)}</div>`;
+  if(i.id){
+    h+=`<div class="iact"><button class="btn btn-sm btn-outline" onclick="setIssue(${i.id},'Fixed',this)">Fixed</button><button class="btn btn-sm btn-outline" onclick="setIssue(${i.id},'Accepted Exception',this)">Accept Exception</button><button class="btn btn-sm btn-red" onclick="setIssue(${i.id},'False Positive',this)">False Positive</button><button class="btn btn-sm btn-outline" onclick="setIssue(${i.id},'Not Applicable',this)">N/A</button></div>`;
+  }
+  h+=`</div>`;return h;
+}
+async function setIssue(id,status,btn){
+  let note='';
+  if(status==='False Positive'||status==='Accepted Exception'||status==='Not Applicable'){note=prompt(status+' — reason (recommended):')||'';}
+  btn.closest('.iact').innerHTML='<span style="font-size:0.75rem;color:var(--g500)">Saving...</span>';
+  try{await fetch(`/api/issues/${id}/status`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,note})});
+    btn.closest('.iss').style.opacity='0.55';
+    btn.closest('.iact').innerHTML=`<span style="font-size:0.78rem;font-weight:600">Marked: ${esc(status)}</span>`;
+  }catch(e){btn.closest('.iact').innerHTML='<span style="font-size:0.75rem;color:var(--acc)">Error</span>';}
+}
+function histTable(rows){
+  if(!rows||!rows.length)return'<p style="font-size:0.85rem;color:var(--g500)">None yet.</p>';
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Date</th></tr></thead><tbody>';
+  rows.forEach(r=>{const v=(r.verdict||'').toUpperCase();let b='b-info';if(v.includes('PASS')||v.includes('READY'))b='b-pass';else if(v.includes('DO NOT')||v.includes('FAIL'))b='b-fail';else b='b-warn';
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;});
+  return h+'</tbody></table>';
+}
+
+// ---- RULES ADMIN ----
+async function loadRules(){
+  const stage=$('rule-stage-filter')?$('rule-stage-filter').value:'';
+  const q=stage?('?stage='+encodeURIComponent(stage)):'';
+  const rows=await fetch('/api/rules'+q).then(r=>r.json());
+  if(!rows.length){$('rulesTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No rules.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>Ref</th><th>Stage</th><th>Category</th><th>Description</th><th>Severity</th><th>Active</th><th>Actions</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const exc=(r.exclusions||[]).length;
+    h+=`<tr><td class="iref">${esc(r.rule_ref||'')}</td><td>${esc(r.stage_applicability||'')}</td><td>${esc(r.category||'')}</td><td style="max-width:320px">${esc(r.description||'')}${exc?`<br><span style="font-size:0.72rem;color:var(--blu)">${exc} exclusion(s)</span>`:''}</td><td><span class="sev ${sevClass(r.severity)}">${esc(r.severity)}</span></td><td>${r.active?'✓':'—'}</td><td><button class="btn btn-sm btn-outline" onclick="editRule(${r.id},'${esc(r.severity)}',${r.active?1:0})">Edit</button><button class="btn btn-sm btn-outline" onclick="addExclusion(${r.id})">+ Exclusion</button></td></tr>`;
+  });
+  $('rulesTable').innerHTML=h+'</tbody></table>';
+}
+function needAdmin(){if(!currentUser?.is_admin){alert('Admin access code required to change rules.');return false}return true}
+async function editRule(id,sev,active){
+  if(!needAdmin())return;
+  const ns=prompt('Severity (Critical/High/Medium/Low/Observation):',sev);if(ns===null)return;
+  const act=confirm('OK = keep/make ACTIVE, Cancel = make INACTIVE');
+  await fetch(`/api/rules/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code,severity:ns.trim(),active:act?1:0,submitted_by:currentUser.consultant_name})});
+  loadRules();
+}
+async function addExclusion(id){
+  if(!needAdmin())return;
+  const t=prompt('Add an exclusion — describe what the tool should NOT flag for this rule:');if(!t)return;
+  await fetch(`/api/rules/${id}/exclusions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code,exclusion_text:t.trim(),submitted_by:currentUser.consultant_name})});
+  loadRules();
+}
+async function addRule(){
+  if(!needAdmin())return;
+  const desc=$('nr-desc').value.trim();if(!desc){$('addRuleMsg').textContent='Description required.';return}
+  const r=await fetch('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code,stage_applicability:$('nr-stage').value,category:$('nr-cat').value,severity:$('nr-sev').value,description:desc,rule_ref:$('nr-ref').value.trim(),submitted_by:currentUser.consultant_name})});
+  const d=await r.json();
+  if(d.status==='ok'){$('addRuleMsg').style.color='#276749';$('addRuleMsg').textContent='Rule added.';$('nr-desc').value='';$('nr-ref').value='';loadRules();}
+  else{$('addRuleMsg').style.color='#e53e3e';$('addRuleMsg').textContent=d.error||'Failed.';}
+}
+
+// ---- LEARNING ----
+async function loadLearning(){
+  const days=$('learn-days')?$('learn-days').value:30;
+  const rows=await fetch('/api/learning/false-positives?days='+days).then(r=>r.json());
+  if(!rows.length){$('learningTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No false positives flagged in this window. The tool\'s current rules are holding up.</p>';return}
+  let h='<table class="tbl"><thead><tr><th>Deal</th><th>Severity</th><th>Category</th><th>Section</th><th>Issue</th><th>Status</th><th>Note</th></tr></thead><tbody>';
+  rows.forEach(r=>{h+=`<tr><td>${esc(r.deal_code||'-')}</td><td><span class="sev ${sevClass(r.severity)}">${esc(r.severity||'')}</span></td><td>${esc(r.category||'')}</td><td>${esc(r.section||'')}</td><td style="max-width:300px">${esc(r.discrepancy||'')}</td><td>${esc(r.status||'')}</td><td>${esc(r.status_note||'')}</td></tr>`;});
+  $('learningTable').innerHTML=h+'</tbody></table>';
 }
 </script>
 </body>
