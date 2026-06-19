@@ -179,10 +179,10 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
 <div class="gate" id="gateScreen">
   <div class="gate-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem">🏠</div>
-    <h2>AUSMAR PSE QA Agent</h2>
-    <p>Enter your access code to continue. Contact your manager if you don't have one.</p>
+    <h2>AUSMAR QA Agent</h2>
+    <p>Enter your login code to continue. Contact your manager if you don't have one.</p>
     <input type="text" id="gateCode" placeholder="XXXXXX" maxlength="8" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')validateGate()">
-    <button class="btn btn-primary" style="width:100%" onclick="validateGate()">Enter</button>
+    <button class="btn btn-primary" style="width:100%" onclick="validateGate()">Log In</button>
     <div class="gate-err" id="gateErr"></div>
   </div>
 </div>
@@ -216,6 +216,10 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
 <!-- ============ NEW REVIEW ============ -->
 <div id="sec-review" class="section active">
   <div class="card" id="uploadCard">
+    <div class="form-row">
+      <div><label>Deal Code *</label><input id="s1-code" placeholder="e.g. S26TLS" oninput="updateGoBtn()"></div>
+      <div><label>Consultant *</label><select id="s1-consultant" onchange="updateGoBtn()"><option value="">Select consultant...</option></select></div>
+    </div>
     <div class="upzone" id="upzone" onclick="$('fileIn').click()">
       <div class="ic">&#128193;</div>
       <p><strong>Drop submission zip here</strong> or click to browse</p>
@@ -315,7 +319,7 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
   <div class="card" id="s2UploadCard">
     <h2>Stage 2 — NHP Review</h2>
     <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Confirms every signed variation order (VO) carried through to the Final NHP that forms the contract price, with matching debit/credit amounts and a reconciling total. Upload the NHP Changes document and the Final NHP PDF.</p>
-    <div class="form-row"><div><label>Deal Code</label><input id="s2-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant</label><input id="s2-consultant" placeholder="(auto from your code)"></div></div>
+    <div class="form-row"><div><label>Deal Code</label><input id="s2-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="s2-consultant"><option value="">Select consultant...</option></select></div></div>
     <div class="form-row"><div>
       <label>NHP Changes document (PDF with VOs) *</label>
       <input type="file" id="s2-changes" accept=".pdf">
@@ -339,7 +343,8 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
   <div class="card" id="s3UploadCard">
     <h2>Stage 3 — Pre-Contract QA</h2>
     <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Two-pass check that the final contract pack reflects the signed source before issue. Pass 1 compares pricing &amp; specification; Pass 2 is an AI-assisted drawing review that points the reviewer to sheets needing human confirmation. Output is itemised by spec section and drawing page, matching the QA template. <strong>All three contract documents plus at least one signed source are required</strong> — otherwise the job is parked, not passed.</p>
-    <div class="form-row"><div><label>Deal Code</label><input id="s3-code" placeholder="e.g. S26JRGB2"></div><div><label>Job Category</label><select id="s3-cat"><option value="">Select...</option><option>CAT1 Standard</option><option>CAT2 Minor variations</option><option>CAT3 Major variations</option><option>CAT4 Complex/custom</option></select></div></div>
+    <div class="form-row"><div><label>Deal Code</label><input id="s3-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="s3-consultant"><option value="">Select consultant...</option></select></div></div>
+    <div class="form-row"><div><label>Job Category</label><select id="s3-cat"><option value="">Select...</option><option>CAT1 Standard</option><option>CAT2 Minor variations</option><option>CAT3 Major variations</option><option>CAT4 Complex/custom</option></select></div></div>
     <div class="s3-grid">
       <div><label>Signed NHP / PSE (source) *</label><input type="file" id="s3-signed_nhp" accept=".pdf"></div>
       <div><label>Signed VOs / NHP Changes</label><input type="file" id="s3-signed_vos" accept=".pdf"></div>
@@ -400,6 +405,18 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
     <div id="newCodeResult" style="margin-top:0.5rem"></div>
     <div id="codesTable" style="margin-top:1rem"></div>
   </div>
+  <div class="card">
+    <h2>User Management</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Add users and assign roles. Each user logs in with their own code. Roles: <strong>Admin</strong> (everything), <strong>Manager (Heath)</strong> (consultant view + Rules + Learning + Heath Dashboard + Plans), <strong>Manager (Lyana)</strong> (consultant view + Rules + Learning), <strong>Consultant</strong> (submissions, own history, Help).</p>
+    <div class="form-row three">
+      <div><label>Full Name *</label><input id="um-name" placeholder="e.g. Jane Smith"></div>
+      <div><label>Role *</label><select id="um-role"><option value="consultant">Consultant</option><option value="manager_lyana">Manager (Lyana — Rules+Learning)</option><option value="manager_heath">Manager (Heath — +Plans+Dashboard)</option><option value="admin">Admin</option></select></div>
+      <div><label>Email (optional)</label><input id="um-email" placeholder="jane@ausmar.com.au"></div>
+    </div>
+    <div class="form-row"><div><label>Login Code (optional — auto-generated if blank)</label><input id="um-code" placeholder="6 chars, e.g. JSMITH" maxlength="10" oninput="this.value=this.value.toUpperCase()"></div><div style="display:flex;align-items:flex-end"><button class="btn btn-green" style="width:100%" onclick="createUser()">Add User</button></div></div>
+    <div id="newUserResult" style="margin-top:0.5rem"></div>
+    <div id="usersTable" style="margin-top:1rem"></div>
+  </div>
   <div class="card" style="border:1px solid #2d6a4f44">
     <h2 style="color:#2d6a4f">Review History</h2>
     <p style="font-size:0.8rem;color:var(--g500)">Review history and Heath's notes are permanently stored in the database and are never deleted. They are required training records.</p>
@@ -422,19 +439,28 @@ const $=id=>document.getElementById(id);
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 let selFile=null;
 let pollTimer=null;
-let currentUser=null; // {consultant_name, email, code, is_admin}
+let currentUser=null; // {full_name, consultant_name, email, code, role, is_admin, permissions}
 
-// ============ ACCESS CODE GATE ============
+const ROLE_LABELS={admin:'Admin',manager_heath:'Manager',manager_lyana:'Manager',consultant:'Consultant'};
+
+// ============ LOGIN GATE ============
 async function validateGate(){
   const code=$('gateCode').value.trim().toUpperCase();
-  if(!code){$('gateErr').textContent='Enter your access code.';return}
+  if(!code){$('gateErr').textContent='Enter your login code.';return}
   $('gateErr').textContent='';
   try{
-    // Admin bypass — code "ADMIN" shows admin tab
-    const r=await fetch('/api/access-codes/validate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
     const d=await r.json();
     if(d.valid){
-      currentUser={consultant_name:d.consultant_name,email:d.email,code,is_admin:false};
+      currentUser={
+        full_name:d.full_name,
+        consultant_name:d.full_name, // back-compat alias used by submit handlers
+        email:d.email||'',
+        code,
+        role:d.role||'consultant',
+        is_admin:(d.role==='admin'),
+        permissions:d.permissions||{}
+      };
       enterApp();
     } else {
       $('gateErr').textContent=d.error||'Invalid code. Contact your manager.';
@@ -442,15 +468,40 @@ async function validateGate(){
   }catch(e){$('gateErr').textContent='Connection error. Try again.'}
 }
 
+// Map each nav button + section to a permission key so we can show/hide by role.
+const NAV_PERMS=[
+  ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],
+  ['sec-history','history'],['sec-reports','reports'],['sec-heath','heath_dashboard'],
+  ['sec-prelog','prelog'],['sec-plans','plans'],['sec-rules','rules'],
+  ['sec-learning','learning']
+];
+
+function applyPermissions(){
+  const p=currentUser.permissions||{};
+  // Nav buttons: match by the section id referenced in their onclick.
+  document.querySelectorAll('.hdr nav button').forEach(btn=>{
+    const oc=btn.getAttribute('onclick')||'';
+    const m=oc.match(/showSection\('(sec-[a-z0-9]+)'/);
+    if(m){
+      const sec=m[1];
+      const map=NAV_PERMS.find(x=>x[0]===sec);
+      if(map){btn.style.display=p[map[1]]?'':'none';}
+    }
+  });
+  // Admin button (separate id, hidden by default)
+  $('adminBtn').style.display=p.admin?'':'none';
+  // Make sure the first visible section is the active one.
+  const firstVisible=document.querySelector('.hdr nav button:not([style*="display: none"])');
+  if(firstVisible)firstVisible.click();
+}
+
 function enterApp(){
   $('gateScreen').style.display='none';
   $('mainApp').style.display='block';
-  $('userPill').textContent=currentUser.consultant_name;
-  // Show admin tab if consultant_name contains 'admin' (case-insensitive)
-  if(currentUser.consultant_name.toLowerCase().includes('admin')){
-    currentUser.is_admin=true;
-    $('adminBtn').style.display='';
-  }
+  const label=ROLE_LABELS[currentUser.role]||'User';
+  $('userPill').textContent=currentUser.full_name+' · '+label;
+  applyPermissions();
+  loadConsultants();
 }
 
 // ============ NAVIGATION ============
@@ -468,8 +519,25 @@ uz.addEventListener('dragleave',()=>uz.classList.remove('over'));
 uz.addEventListener('drop',e=>{e.preventDefault();uz.classList.remove('over');if(e.dataTransfer.files[0]?.name.endsWith('.zip')){selFile=e.dataTransfer.files[0];showFile()}else alert('Upload a .zip file')});
 
 function onFile(e){if(e.target.files[0]){selFile=e.target.files[0];showFile()}}
-function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(selFile.size/1024/1024).toFixed(1)+' MB';$('fbar').style.display='flex';$('btnGo').disabled=false}
-function clearFile(){selFile=null;$('fbar').style.display='none';$('btnGo').disabled=true;$('fileIn').value=''}
+function showFile(){$('fName').textContent=selFile.name;$('fSize').textContent=(selFile.size/1024/1024).toFixed(1)+' MB';$('fbar').style.display='flex';updateGoBtn()}
+function clearFile(){selFile=null;$('fbar').style.display='none';$('fileIn').value='';updateGoBtn()}
+// Stage 1 Run button stays disabled until a file, Deal Code, and Consultant are all set.
+function updateGoBtn(){
+  const ok=!!selFile && !!$('s1-code').value.trim() && !!$('s1-consultant').value;
+  $('btnGo').disabled=!ok;
+}
+
+// ============ CONSULTANT DROPDOWNS ============
+let CONSULTANTS=[];
+async function loadConsultants(){
+  try{CONSULTANTS=await fetch('/api/consultants').then(r=>r.json());}catch(e){CONSULTANTS=[];}
+  ['s1-consultant','s2-consultant','s3-consultant'].forEach(id=>{
+    const sel=$(id);if(!sel)return;
+    sel.innerHTML='<option value="">Select consultant...</option>'+CONSULTANTS.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    // If the logged-in user is one of the consultants, pre-select their name.
+    if(currentUser&&CONSULTANTS.includes(currentUser.full_name)){sel.value=currentUser.full_name;}
+  });
+}
 
 // ============ START REVIEW ============
 function startReview(){
@@ -477,8 +545,10 @@ function startReview(){
   $('uploadCard').style.display='none';$('progCard').style.display='block';$('resultsArea').innerHTML='';
   $('progFill').style.width='5%';$('progTxt').textContent='Uploading file...';$('progTitle').textContent='Uploading submission...';$('progTitle').classList.add('loading');
   const fd=new FormData();fd.append('file',selFile);
-  // Attach consultant identity from access code
-  if(currentUser){fd.append('consultant_name',currentUser.consultant_name);fd.append('consultant_email',currentUser.email||'')}
+  // Stage 1 now sends the explicit Deal Code + selected Consultant (both required).
+  fd.append('deal_code',$('s1-code').value.trim());
+  fd.append('consultant_name',$('s1-consultant').value);
+  if(currentUser){fd.append('consultant_email',currentUser.email||'')}
   // Use XMLHttpRequest with upload progress events to keep the connection alive.
   // fetch() with no timeout hangs silently if Railway's proxy drops idle connections at 60s.
   const xhr=new XMLHttpRequest();
@@ -638,7 +708,7 @@ function cp(id){
 
 function resetReview(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null}
-  clearFile();$('uploadCard').style.display='block';$('progCard').style.display='none';$('resultsArea').innerHTML='';$('progFill').style.width='0%';
+  clearFile();$('s1-code').value='';$('uploadCard').style.display='block';$('progCard').style.display='none';$('resultsArea').innerHTML='';$('progFill').style.width='0%';updateGoBtn();
 }
 
 // ============ FEEDBACK ============
@@ -670,7 +740,8 @@ async function sendGeneralFb(rid){
 
 // ============ HISTORY ============
 async function loadHistory(){
-  const[stats,reviews]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/reviews').then(r=>r.json())]);
+  const qs=(currentUser&&currentUser.permissions&&currentUser.permissions.history_own_only)?('?consultant='+encodeURIComponent(currentUser.full_name||'')):'';
+  const[stats,reviews]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/reviews'+qs).then(r=>r.json())]);
   const acceptRate=stats.total?Math.round(stats.accepted/stats.total*100):0;
   $('statsRow').innerHTML=`
     <div class="stat"><div class="num">${stats.total}</div><div class="lbl">Total Reviews</div></div>
@@ -679,11 +750,12 @@ async function loadHistory(){
     <div class="stat"><div class="num" style="color:var(--blu)">${acceptRate}%</div><div class="lbl">Accept Rate</div></div>`;
 
   if(!reviews.length){$('historyTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No reviews yet.</p>';return}
-  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Type</th><th>Date</th><th></th></tr></thead><tbody>';
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Type</th><th>Verdict</th><th>Date</th><th></th></tr></thead><tbody>';
   reviews.forEach(r=>{
     const vc=r.verdict||'';
     let bcls='b-info';if(vc.includes('NOT ACCEPTED'))bcls='b-fail';else if(vc.includes('ACCEPTED'))bcls='b-pass';
-    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||r.zip_name)}</strong></td><td><span class="badge ${bcls}">${esc(vc)}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(r.deposit_type||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button></td></tr>`;
+    const typ=r.display_type||'PSE';
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||r.zip_name)}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(typ)}</td><td><span class="badge ${bcls}">${esc(vc)}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="viewReview(${r.id})">View</button></td></tr>`;
   });
   h+='</tbody></table>';
   $('historyTable').innerHTML=h;
@@ -788,8 +860,44 @@ async function loadHeath(){
   $('heathQueue').innerHTML=h;
 }
 
+// ============ USER MANAGEMENT ============
+async function loadUsers(){
+  const r=await fetch('/api/users',{headers:{'X-User-Code':currentUser.code}});
+  if(!r.ok){$('usersTable').innerHTML='<p style="font-size:0.85rem;color:var(--acc)">Admin access required.</p>';return}
+  const users=await r.json();
+  if(!users.length){$('usersTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No users yet.</p>';return}
+  const RL={admin:'Admin',manager_heath:'Manager (Heath)',manager_lyana:'Manager (Lyana)',consultant:'Consultant'};
+  let h='<table class="tbl"><thead><tr><th>Code</th><th>Name</th><th>Role</th><th>Email</th><th>Status</th><th>Change Role</th><th></th></tr></thead><tbody>';
+  users.forEach(u=>{
+    const opts=['admin','manager_heath','manager_lyana','consultant'].map(rr=>`<option value="${rr}" ${u.role===rr?'selected':''}>${RL[rr]}</option>`).join('');
+    h+=`<tr><td><strong style="font-family:monospace;letter-spacing:0.1em">${esc(u.code)}</strong></td><td>${esc(u.full_name)}</td><td>${esc(RL[u.role]||u.role)}</td><td>${esc(u.email||'-')}</td><td><span class="badge ${u.active?'b-pass':'b-fail'}">${u.active?'Active':'Inactive'}</span></td><td><select onchange="changeRole(${u.id},this.value)">${opts}</select></td><td>${u.active?`<button class="btn btn-sm btn-red" onclick="toggleUser(${u.id},0)">Deactivate</button>`:`<button class="btn btn-sm btn-outline" onclick="toggleUser(${u.id},1)">Reactivate</button>`}</td></tr>`;
+  });
+  $('usersTable').innerHTML=h+'</tbody></table>';
+}
+async function createUser(){
+  const name=$('um-name').value.trim();if(!name){alert('Full name required');return}
+  const body={code:currentUser.code,full_name:name,role:$('um-role').value,email:$('um-email').value.trim(),login_code:$('um-code').value.trim()};
+  const r=await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json();
+  if(d.status==='ok'){
+    $('newUserResult').innerHTML=`<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:5px;padding:0.75rem;font-size:0.9rem">Added <strong>${esc(d.user.full_name)}</strong> — login code: <strong style="font-family:monospace;font-size:1.1rem;letter-spacing:0.15em;color:var(--p)">${esc(d.user.code)}</strong>. Share this with them.</div>`;
+    ['um-name','um-email','um-code'].forEach(id=>$(id).value='');loadUsers();
+  } else {
+    $('newUserResult').innerHTML=`<div style="color:var(--acc)">${esc(d.error||'Error')}</div>`;
+  }
+}
+async function changeRole(id,role){
+  await fetch(`/api/users/${id}/role`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code,role})});
+  loadUsers();
+}
+async function toggleUser(id,active){
+  await fetch(`/api/users/${id}/active`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:currentUser.code,active:!!active})});
+  loadUsers();
+}
+
 // ============ ADMIN — ACCESS CODES ============
 async function loadAdmin(){
+  loadUsers();
   const codes=await fetch('/api/access-codes').then(r=>r.json());
   if(!codes.length){$('codesTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No codes yet.</p>';return}
   let h='<table class="tbl"><thead><tr><th>Code</th><th>Consultant</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>';
@@ -916,12 +1024,13 @@ function pollStage(reviewId,fill,txt,title,onDone,which){
 function startStage2(){
   const ch=$('s2-changes').files[0],fn=$('s2-final').files[0];
   if(!ch||!fn){alert('Upload BOTH the NHP Changes PDF and the Final NHP PDF.');return}
+  if(!$('s2-consultant').value){alert('Select the Consultant for this deal.');return}
   $('s2UploadCard').style.display='none';$('s2ProgCard').style.display='block';$('s2Results').innerHTML='';
   $('s2ProgFill').style.width='5%';$('s2ProgTitle').classList.add('loading');$('s2ProgTxt').textContent='Uploading...';
   const fd=new FormData();
   fd.append('nhp_changes',ch);fd.append('final_nhp',fn);
   fd.append('deal_code',$('s2-code').value.trim());
-  fd.append('consultant_name',($('s2-consultant').value.trim()||currentUser?.consultant_name||''));
+  fd.append('consultant_name',$('s2-consultant').value);
   const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage2/review');xhr.timeout=180000;
   xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s2ProgFill'),$('s2ProgTxt'),$('s2ProgTitle'),renderStage2,'s2');}else{alert(d.error||'Upload failed');resetStage2();}}catch(e){alert('Upload failed');resetStage2();}};
   xhr.onerror=()=>{alert('Network error');resetStage2();};
@@ -943,8 +1052,9 @@ function renderStage2(d){
   $('s2Results').innerHTML=h;loadStage2History();
 }
 
+function _ownScope(){return (currentUser&&currentUser.permissions&&currentUser.permissions.history_own_only)?('&consultant='+encodeURIComponent(currentUser.full_name||'')):'';}
 async function loadStage2History(){
-  try{const rows=await fetch('/api/contract-reviews?stage=2').then(r=>r.json());$('s2History').innerHTML=histTable(rows);}catch(e){}
+  try{const rows=await fetch('/api/contract-reviews?stage=2'+_ownScope()).then(r=>r.json());$('s2History').innerHTML=histTable(rows);}catch(e){}
 }
 
 // ---- STAGE 3 ----
@@ -952,13 +1062,14 @@ const S3_KEYS=['signed_nhp','signed_vos','red_pen','contract_spec','contract_pri
 function startStage3(){
   const need=['signed_nhp','contract_spec','contract_pricing','working_drawings'];
   for(const k of need){if(!$('s3-'+k).files[0]){alert('Missing required document: '+k.replace(/_/g,' ')+'. Stage 3 needs the signed source plus all three contract documents, or it parks the job.');return}}
+  if(!$('s3-consultant').value){alert('Select the Consultant for this deal.');return}
   $('s3UploadCard').style.display='none';$('s3ProgCard').style.display='block';$('s3Results').innerHTML='';
   $('s3ProgFill').style.width='5%';$('s3ProgTitle').classList.add('loading');$('s3ProgTxt').textContent='Uploading...';
   const fd=new FormData();
   S3_KEYS.forEach(k=>{const f=$('s3-'+k).files[0];if(f)fd.append(k,f);});
   fd.append('deal_code',$('s3-code').value.trim());
   fd.append('job_category',$('s3-cat').value);
-  fd.append('consultant_name',currentUser?.consultant_name||'');
+  fd.append('consultant_name',$('s3-consultant').value);
   const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage3/review');xhr.timeout=300000;
   xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s3ProgFill'),$('s3ProgTxt'),$('s3ProgTitle'),renderStage3,'s3');}else{alert(d.error||'Upload failed');resetStage3();}}catch(e){alert('Upload failed');resetStage3();}};
   xhr.onerror=()=>{alert('Network error');resetStage3();};
@@ -979,7 +1090,7 @@ function renderStage3(d){
 }
 
 async function loadStage3History(){
-  try{const rows=await fetch('/api/contract-reviews?stage=3').then(r=>r.json());$('s3History').innerHTML=histTable(rows);}catch(e){}
+  try{const rows=await fetch('/api/contract-reviews?stage=3'+_ownScope()).then(r=>r.json());$('s3History').innerHTML=histTable(rows);}catch(e){}
 }
 
 // ---- Shared renderers ----
@@ -1025,9 +1136,10 @@ async function setIssue(id,status,btn){
 }
 function histTable(rows){
   if(!rows||!rows.length)return'<p style="font-size:0.85rem;color:var(--g500)">None yet.</p>';
-  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Verdict</th><th>Consultant</th><th>Date</th></tr></thead><tbody>';
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Type</th><th>Verdict</th><th>Date</th></tr></thead><tbody>';
   rows.forEach(r=>{const v=(r.verdict||'').toUpperCase();let b='b-info';if(v.includes('PASS')||v.includes('READY'))b='b-pass';else if(v.includes('DO NOT')||v.includes('FAIL'))b='b-fail';else b='b-warn';
-    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${esc(r.consultant_name||'-')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;});
+    const typ=r.display_type||(r.stage===2?'NHP':'Contract');
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(typ)}</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;});
   return h+'</tbody></table>';
 }
 

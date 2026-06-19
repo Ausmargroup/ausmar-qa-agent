@@ -18,6 +18,9 @@ import db_v2
 import nhp_engine
 import contract_qa_engine
 
+# Users / roles (additive — login + role-based permissions + user management)
+import users_db
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 
@@ -56,6 +59,7 @@ def _ensure_db():
         try:
             db.init_db()
             db_v2.init_v2()  # create V2 tables + seed rule library (idempotent)
+            users_db.init_users()  # create users table + seed accounts (idempotent)
             _db_ready = True
         except Exception as e:
             import sys, traceback
@@ -69,7 +73,7 @@ def health():
     return "ok", 200
 
 
-def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes=""):
+def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes="", deal_code_override=""):
     """Background thread: runs the full QA review and updates status in DB."""
     try:
         db.update_pending_progress(pending_id, 5, "Extracting zip and checking structure...")
@@ -86,8 +90,14 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
 
         # Save to database
         vd = result.get("verdict_data", {})
+        # The Stage 1 form now sends an explicit, required Deal Code and Consultant.
+        # Treat them as authoritative so History never shows blanks/UNKNOWN or a
+        # mis-extracted consultant. Fall back to the engine's extracted values only
+        # when the form value is empty.
+        final_deal_code = (deal_code_override or "").strip() or result.get("deal_code", "")
+        final_consultant = (consultant_name or "").strip() or result.get("consultant_name", "")
         review_data = {
-            "deal_code": result.get("deal_code", ""),
+            "deal_code": final_deal_code,
             "zip_name": result.get("zip_name", ""),
             "deposit_type": result.get("deposit_type", "UNKNOWN"),
             "verdict": vd.get("verdict", "ERROR"),
@@ -100,7 +110,7 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
             "files_in_zip": result.get("checks", {}).get("file_structure", {}).get("files", []),
             "corrections_applied": result.get("corrections_applied", []),
             "corrected_zip_path": result.get("corrected_zip_path", ""),
-            "consultant_name": consultant_name or result.get("consultant_name", ""),
+            "consultant_name": final_consultant,
             "prelog_id": result.get("prelog_id"),
         }
         review_id = db.save_review(review_data)
@@ -141,12 +151,17 @@ def api_review():
     if not file.filename.endswith(".zip"):
         return jsonify({"error": "File must be a .zip"}), 400
 
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-    file.save(filepath)
-
-    # Consultant identity from access code (sent as form fields)
+    # Consultant identity + Deal Code now come from the Stage 1 form and are required.
     consultant_name = request.form.get("consultant_name", "").strip()
     consultant_email = request.form.get("consultant_email", "").strip()
+    deal_code = request.form.get("deal_code", "").strip()
+    if not consultant_name:
+        return jsonify({"error": "Consultant is required."}), 400
+    if not deal_code:
+        return jsonify({"error": "Deal Code is required."}), 400
+
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
+    file.save(filepath)
 
     # Create a pending review ID and return immediately
     pending_id = str(uuid.uuid4())[:12]
@@ -158,7 +173,7 @@ def api_review():
     # Launch background thread
     t = threading.Thread(
         target=_run_review_background,
-        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email, notes),
+        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email, notes, deal_code),
         daemon=True,
     )
     t.start()
@@ -222,12 +237,34 @@ def download_corrected(review_id):
 
 
 # ---- Review History ----
+def _first_name(name):
+    return (name or "").strip().split(" ")[0].lower()
+
+
+def _stage1_display_type(deposit_type):
+    """Stage 1 is always a PSE submission. Map the deposit type to a clean label
+    so the History table never shows 'UNKNOWN'. NHP/STC are kept as-is; anything
+    blank or unknown shows the generic 'PSE'."""
+    dt = (deposit_type or "").strip().upper()
+    if dt in ("NHP", "STC"):
+        return f"PSE ({dt})"
+    return "PSE"
+
+
 @app.route("/api/reviews")
 def api_reviews():
     reviews = db.get_all_reviews()
-    # Strip large check_results for list view
+    # Optional consultant scoping: consultants only see their own deals. Matching
+    # is by first name (case-insensitive) so it works for both old extracted names
+    # and the new full-name dropdown values.
+    consultant = (request.args.get("consultant") or "").strip()
+    if consultant:
+        fn = _first_name(consultant)
+        reviews = [r for r in reviews if _first_name(r.get("consultant_name")) == fn]
+    # Strip large check_results for list view and attach a clean display type.
     for r in reviews:
         r.pop("check_results", None)
+        r["display_type"] = _stage1_display_type(r.get("deposit_type"))
     return jsonify(reviews)
 
 
@@ -309,9 +346,17 @@ def api_plans():
     return jsonify(db.get_all_plans())
 
 
+def _can_manage_plans(code):
+    """Plan management is allowed for admins and Heath only (per role spec)."""
+    u = users_db.get_user_by_code((code or "").strip().upper())
+    return bool(u and u.get("role") in ("admin", "manager_heath"))
+
+
 @app.route("/api/plans", methods=["POST"])
 def api_add_plan():
-    data = request.json
+    data = request.json or {}
+    if not _can_manage_plans(data.get("code")):
+        return jsonify({"error": "Plan management requires admin or Heath access"}), 403
     if not data.get("name") or not data.get("min_width") or not data.get("min_length"):
         return jsonify({"error": "name, min_width, min_length required"}), 400
     db.add_plan(
@@ -327,6 +372,9 @@ def api_add_plan():
 
 @app.route("/api/plans/<int:plan_id>", methods=["DELETE"])
 def api_delete_plan(plan_id):
+    code = request.args.get("code") or request.headers.get("X-User-Code", "")
+    if not _can_manage_plans(code):
+        return jsonify({"error": "Plan management requires admin or Heath access"}), 403
     db.delete_plan(plan_id)
     return jsonify({"status": "ok"})
 
@@ -334,6 +382,8 @@ def api_delete_plan(plan_id):
 def api_update_plan(plan_id):
     _ensure_db()
     data = request.get_json() or {}
+    if not _can_manage_plans(data.get("code")):
+        return jsonify({"error": "Plan management requires admin or Heath access"}), 403
     allowed = ["name", "min_width", "min_length", "total_area", "width_incl_eaves", "house_width"]
     updates = {k: v for k, v in data.items() if k in allowed}
     if not updates:
@@ -389,6 +439,112 @@ def api_validate_access_code():
     if record:
         return jsonify({"valid": True, "consultant_name": record["consultant_name"], "email": record["email"]})
     return jsonify({"valid": False, "error": "Invalid or inactive access code"}), 401
+
+
+# ===========================================================================
+# AUTH / USERS (role-based login + user management)
+# ===========================================================================
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    """Validate a login code and return the user's identity, role and the set of
+    UI permissions the frontend uses to show/hide sections."""
+    _ensure_db()
+    data = request.json or {}
+    code = (data.get("code") or "").strip().upper()
+    if not code:
+        return jsonify({"valid": False, "error": "Enter your login code."}), 400
+    user = users_db.get_user_by_code(code)
+    if not user:
+        # Backward-compatibility: fall back to the legacy access_codes table so
+        # any old code still works (treated as a consultant).
+        legacy = db.get_access_code(code)
+        if legacy:
+            name = legacy["consultant_name"]
+            role = "admin" if "admin" in (name or "").lower() else "consultant"
+            return jsonify({
+                "valid": True, "full_name": name, "email": legacy.get("email", ""),
+                "role": role, "code": code,
+                "permissions": users_db.permissions_for(role),
+            })
+        return jsonify({"valid": False, "error": "Invalid or inactive login code."}), 401
+    return jsonify({
+        "valid": True,
+        "full_name": user["full_name"],
+        "email": user.get("email", ""),
+        "role": user["role"],
+        "code": code,
+        "permissions": users_db.permissions_for(user["role"]),
+    })
+
+
+@app.route("/api/consultants")
+def api_consultants():
+    """The fixed list of sales consultants for the Stage 1/2/3 dropdowns."""
+    return jsonify(users_db.CONSULTANTS)
+
+
+def _require_admin():
+    """Return the admin user dict if the request carries a valid admin code,
+    else None. Code is read from JSON body 'code' or 'X-User-Code' header."""
+    code = ""
+    if request.is_json:
+        code = (request.json or {}).get("code", "")
+    code = code or request.headers.get("X-User-Code", "")
+    user = users_db.get_user_by_code((code or "").strip().upper())
+    return user if (user and user.get("role") == "admin") else None
+
+
+@app.route("/api/users")
+def api_users():
+    """List all users. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    return jsonify(users_db.get_all_users())
+
+
+@app.route("/api/users", methods=["POST"])
+def api_add_user():
+    """Add a new user and assign a role. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    data = request.json or {}
+    try:
+        user = users_db.add_user(
+            full_name=data.get("full_name", ""),
+            role=data.get("role", "consultant"),
+            email=data.get("email", ""),
+            code=data.get("login_code", ""),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"status": "ok", "user": user})
+
+
+@app.route("/api/users/<int:user_id>/role", methods=["PATCH"])
+def api_update_user_role(user_id):
+    """Change a user's role. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    data = request.json or {}
+    try:
+        users_db.update_user_role(user_id, (data.get("role") or "").strip())
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/users/<int:user_id>/active", methods=["PATCH"])
+def api_set_user_active(user_id):
+    """Activate/deactivate a user. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    data = request.json or {}
+    users_db.set_user_active(user_id, 1 if data.get("active") else 0)
+    return jsonify({"status": "ok"})
 
 
 # ---- Reports ----
@@ -547,11 +703,16 @@ def api_debug_stats():
 # ===========================================================================
 
 def _is_admin(code):
-    """Reuse the Stage 1 admin convention: access code whose consultant_name
-    contains 'admin'."""
+    """Admin if the code maps to a user with the 'admin' role, OR (legacy) an
+    access code whose consultant_name contains 'admin'. Rules/Learning editing
+    is allowed for admins and the two managers (Heath, Lyana) per the role spec."""
     if not code:
         return False
-    acc = db.get_access_code((code or "").strip().upper())
+    code = (code or "").strip().upper()
+    u = users_db.get_user_by_code(code)
+    if u and u.get("role") in ("admin", "manager_heath", "manager_lyana"):
+        return True
+    acc = db.get_access_code(code)
     return bool(acc and "admin" in (acc.get("consultant_name") or "").lower())
 
 
@@ -616,6 +777,8 @@ def api_stage2_review():
         return jsonify({"error": "Both 'nhp_changes' and 'final_nhp' PDF files are required."}), 400
     deal_code = (request.form.get("deal_code") or "").strip()
     consultant_name = (request.form.get("consultant_name") or "").strip()
+    if not consultant_name:
+        return jsonify({"error": "Consultant is required."}), 400
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, paths.get("nhp_changes", "nhp"))
     threading.Thread(target=_run_nhp_background,
@@ -662,6 +825,8 @@ def api_stage3_review():
     deal_code = (request.form.get("deal_code") or "").strip()
     consultant_name = (request.form.get("consultant_name") or "").strip()
     job_category = (request.form.get("job_category") or "").strip()
+    if not consultant_name:
+        return jsonify({"error": "Consultant is required."}), 400
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, paths.get("contract_spec", "contract"))
     threading.Thread(target=_run_stage3_background,
@@ -679,8 +844,15 @@ def api_contract_reviews():
     _ensure_db()
     stage = request.args.get("stage", type=int)
     rows = db_v2.get_contract_reviews(stage=stage)
+    # Optional consultant scoping (consultants see only their own deals).
+    consultant = (request.args.get("consultant") or "").strip()
+    if consultant:
+        fn = _first_name(consultant)
+        rows = [r for r in rows if _first_name(r.get("consultant_name")) == fn]
     for r in rows:
         r.pop("result_payload", None)  # keep list light
+        # Clean, never-UNKNOWN type label: Stage 2 = NHP, Stage 3 = Contract.
+        r["display_type"] = "NHP" if r.get("stage") == 2 else "Contract"
     return jsonify(rows)
 
 
