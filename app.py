@@ -18,6 +18,10 @@ import db_v2
 import nhp_engine
 import contract_qa_engine
 
+# V3 — Contract QA Intelligence (18 Tier 1 rules engine; additive)
+import db_v3_contract_qa
+import contract_qa_intelligence
+
 # Users / roles (additive — login + role-based permissions + user management)
 import users_db
 
@@ -59,6 +63,7 @@ def _ensure_db():
         try:
             db.init_db()
             db_v2.init_v2()  # create V2 tables + seed rule library (idempotent)
+            db_v3_contract_qa.init_v3()  # V3 Contract QA Intelligence tables + rules (idempotent)
             users_db.init_users()  # create users table + seed accounts (idempotent)
             _db_ready = True
         except Exception as e:
@@ -938,6 +943,128 @@ def api_add_exclusion(rule_id):
 def api_rule_history(rule_id):
     _ensure_db()
     return jsonify(db_v2.get_rule_history(rule_id))
+
+
+# ===========================================================================
+# STAGE 4: CONTRACT QA INTELLIGENCE (Tier 1 Rules Engine)
+# Additive — does not modify Stage 1/2/3 routes or engines.
+# ===========================================================================
+
+def _run_stage4_background(pending_id, paths, deal_code, consultant_name):
+    """Background thread: runs all 18 Tier 1 Contract QA rules."""
+    try:
+        result = contract_qa_intelligence.run_contract_qa_intelligence(
+            paths, deal_code=deal_code, consultant_name=consultant_name,
+            progress_cb=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+        )
+        if result.get("status") == "failed":
+            db.fail_pending_review(pending_id, result.get("error", "Contract QA Intelligence failed"))
+        else:
+            db.complete_pending_review(pending_id, json.dumps(result, default=str), result.get("submission_id"))
+    except Exception as e:
+        traceback.print_exc()
+        db.fail_pending_review(pending_id, f"Contract QA Intelligence failed: {e}")
+    finally:
+        for p in paths.values():
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+
+@app.route("/api/stage4/review", methods=["POST"])
+def api_stage4_review():
+    """Submit documents for Contract QA Intelligence (Tier 1 rules check)."""
+    _ensure_db()
+    paths = _save_stage_uploads("s4")
+    deal_code = (request.form.get("deal_code") or "").strip()
+    consultant_name = (request.form.get("consultant_name") or "").strip()
+    if not consultant_name:
+        return jsonify({"error": "Consultant is required."}), 400
+    if not paths.get("specification"):
+        return jsonify({"error": "Specification PDF is required."}), 400
+    pending_id = str(uuid.uuid4())[:12]
+    db.create_pending_review(pending_id, paths.get("specification", "contract_qa"))
+    threading.Thread(target=_run_stage4_background,
+                     args=(pending_id, paths, deal_code, consultant_name), daemon=True).start()
+    return jsonify({"review_id": pending_id, "status": "processing"}), 202
+
+
+@app.route("/api/stage4/submissions")
+def api_stage4_submissions():
+    """List all Contract QA Intelligence submissions."""
+    _ensure_db()
+    rows = db_v3_contract_qa.get_all_submissions()
+    # Optional consultant scoping
+    consultant = (request.args.get("consultant") or "").strip()
+    if consultant:
+        fn = _first_name(consultant)
+        rows = [r for r in rows if _first_name(r.get("consultant_name")) == fn]
+    return jsonify(rows)
+
+
+@app.route("/api/stage4/submissions/<int:sub_id>")
+def api_stage4_submission_detail(sub_id):
+    """Get a single Contract QA submission with all findings."""
+    _ensure_db()
+    result = db_v3_contract_qa.get_submission(sub_id)
+    if not result:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(result)
+
+
+@app.route("/api/stage4/rules")
+def api_stage4_rules():
+    """Get all Contract QA Intelligence rules (with parameters)."""
+    _ensure_db()
+    domain = request.args.get("domain")
+    category = request.args.get("category")
+    severity = request.args.get("severity")
+    active_only = request.args.get("active_only") == "1"
+    rules = db_v3_contract_qa.get_all_rules_with_domain(
+        domain=domain, category=category, severity=severity, active_only=active_only
+    )
+    return jsonify(rules)
+
+
+@app.route("/api/stage4/rules/<int:rule_id>", methods=["PATCH"])
+def api_stage4_update_rule(rule_id):
+    """Update a Contract QA rule's parameters (admin only)."""
+    _ensure_db()
+    data = request.get_json() or {}
+    if not _is_admin(data.get("code")):
+        return jsonify({"error": "Admin access code required"}), 403
+    conn = db.get_db()
+    fields = {}
+    for k in ("parameters", "severity", "active", "trigger_condition",
+              "expected_outcome", "documents_checked", "automation_type"):
+        if k in data:
+            fields[k] = data[k]
+    if not fields:
+        return jsonify({"error": "No valid fields to update"}), 400
+    # Build SET clause
+    set_parts = []
+    params = []
+    for k, v in fields.items():
+        if k == "parameters" and isinstance(v, dict):
+            v = json.dumps(v)
+        set_parts.append(f"{k}=?")
+        params.append(v)
+    # Increment version
+    set_parts.append("version=version+1")
+    params.append(rule_id)
+    sql = f"UPDATE qa_rules SET {', '.join(set_parts)} WHERE id=?"
+    if os.environ.get("DATABASE_URL"):
+        import psycopg2, psycopg2.extras
+        pg_sql = sql.replace("?", "%s")
+        cur = conn.cursor()
+        cur.execute(pg_sql, tuple(params))
+    else:
+        conn.execute(sql, tuple(params))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "ok"})
 
 
 # ===========================================================================

@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app.py database.py qa_engine.py compress_zip.py ./
 COPY db_v2.py engine_common.py nhp_engine.py contract_qa_engine.py ./
+COPY db_v3_contract_qa.py contract_qa_intelligence.py ./
 COPY users_db.py ./
 COPY templates/ templates/
 # Create data directories

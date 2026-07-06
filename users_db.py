@@ -210,7 +210,7 @@ def permissions_for(role: str) -> dict:
     show/hide nav; routes can use them to authorise sensitive actions."""
     role = role or "consultant"
     base = {
-        "stage1": False, "stage2": False, "stage3": False,
+        "stage1": False, "stage2": False, "stage3": False, "stage4": False,
         "history": False, "history_own_only": False,
         "reports": False, "heath_dashboard": False, "prelog": False,
         "plans": False, "rules": False, "learning": False,
@@ -222,20 +222,20 @@ def permissions_for(role: str) -> dict:
         base["history_own_only"] = False
     elif role == "manager_heath":
         base.update({
-            "stage1": True, "stage2": True, "stage3": True,
+            "stage1": True, "stage2": True, "stage3": True, "stage4": True,
             "history": True, "reports": True, "prelog": True,
             "heath_dashboard": True, "plans": True,
             "rules": True, "learning": True,
         })
     elif role == "manager_lyana":
         base.update({
-            "stage1": True, "stage2": True, "stage3": True,
+            "stage1": True, "stage2": True, "stage3": True, "stage4": True,
             "history": True, "reports": True, "prelog": True,
             "rules": True, "learning": True,
         })
     else:  # consultant
         base.update({
-            "stage1": True, "stage2": True, "stage3": True,
+            "stage1": True, "stage2": True, "stage3": True, "stage4": True,
             "history": True, "history_own_only": True,
         })
     return base

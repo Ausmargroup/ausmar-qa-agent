@@ -197,6 +197,7 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
       <button class="active" onclick="showSection('sec-review',this)">Stage 1: PSE</button>
       <button onclick="showSection('sec-stage2',this)">Stage 2: NHP</button>
       <button onclick="showSection('sec-stage3',this)">Stage 3: Contract</button>
+      <button onclick="showSection('sec-stage4',this);loadStage4History()">Stage 4: QA Intel</button>
       <button onclick="showSection('sec-history',this);loadHistory()">History</button>
       <button onclick="showSection('sec-reports',this);loadReports()">Reports</button>
       <button onclick="showSection('sec-heath',this);loadHeath()">Heath Dashboard</button>
@@ -364,12 +365,35 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
   <div class="card"><h2>Recent Contract Reviews</h2><div id="s3History"></div></div>
 </div>
 
+<!-- ============ STAGE 4: CONTRACT QA INTELLIGENCE ============ -->
+<div id="sec-stage4" class="section">
+  <div class="card" id="s4UploadCard">
+    <h2>Stage 4 — Contract QA Intelligence</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Runs 18 Tier 1 automated rules against the contract pack. Each rule checks a specific consistency/compliance requirement and returns PASS, FAIL, or WARNING with evidence. Upload the Specification (required) plus optional Working Drawings, NHP, and Variation Orders for maximum coverage.</p>
+    <div class="form-row"><div><label>Deal Code</label><input id="s4-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="s4-consultant"><option value="">Select consultant...</option></select></div></div>
+    <div class="s3-grid">
+      <div><label>Specification (PDF) *</label><input type="file" id="s4-specification" accept=".pdf"></div>
+      <div><label>Working Drawings (PDF)</label><input type="file" id="s4-working_drawings" accept=".pdf"></div>
+      <div><label>NHP Pricing (PDF)</label><input type="file" id="s4-nhp" accept=".pdf"></div>
+      <div><label>Variation Orders / NHP Changes (PDF)</label><input type="file" id="s4-vos" accept=".pdf"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startStage4()">Run Contract QA Intelligence</button>
+  </div>
+  <div class="card" id="s4ProgCard" style="display:none">
+    <h2 class="loading" id="s4ProgTitle">Running QA Intelligence...</h2>
+    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="s4ProgFill"></div></div></div>
+    <div class="prog-txt" id="s4ProgTxt">Uploading...</div>
+  </div>
+  <div id="s4Results"></div>
+  <div class="card"><h2>Recent QA Intelligence Submissions</h2><div id="s4History"></div></div>
+</div>
+
 <!-- ============ RULES ADMIN ============ -->
 <div id="sec-rules" class="section">
   <div class="card">
     <h2>Rule Library</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
-    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option></select></div></div>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3/4 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
+    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option><option value="Stage 4">Stage 4 (QA Intelligence)</option></select></div></div>
     <div id="rulesTable"></div>
   </div>
   <div class="card" id="addRuleCard">
@@ -470,7 +494,7 @@ async function validateGate(){
 
 // Map each nav button + section to a permission key so we can show/hide by role.
 const NAV_PERMS=[
-  ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],
+  ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],['sec-stage4','stage4'],
   ['sec-history','history'],['sec-reports','reports'],['sec-heath','heath_dashboard'],
   ['sec-prelog','prelog'],['sec-plans','plans'],['sec-rules','rules'],
   ['sec-learning','learning']
@@ -531,7 +555,7 @@ function updateGoBtn(){
 let CONSULTANTS=[];
 async function loadConsultants(){
   try{CONSULTANTS=await fetch('/api/consultants').then(r=>r.json());}catch(e){CONSULTANTS=[];}
-  ['s1-consultant','s2-consultant','s3-consultant'].forEach(id=>{
+  ['s1-consultant','s2-consultant','s3-consultant','s4-consultant'].forEach(id=>{
     const sel=$(id);if(!sel)return;
     sel.innerHTML='<option value="">Select consultant...</option>'+CONSULTANTS.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
     // If the logged-in user is one of the consultants, pre-select their name.
@@ -1003,7 +1027,7 @@ async function wipeHistory(){
 // ===========================================================================
 // V2 — STAGE 2 / STAGE 3 / RULES / LEARNING
 // ===========================================================================
-let s2Poll=null,s3Poll=null;
+let s2Poll=null,s3Poll=null,s4PollTimer=null;
 const sevClass=s=>'sev-'+(s||'medium').toLowerCase();
 const sbClass=s=>'sb-'+(s||'medium').toLowerCase();
 
@@ -1017,7 +1041,7 @@ function pollStage(reviewId,fill,txt,title,onDone,which){
       else if(d.status==='failed'){clearInterval(t);title.textContent='Failed';title.classList.remove('loading');txt.textContent=d.error||'Review failed';}
     }catch(e){console.warn('poll',e)}
   },3000);
-  if(which==='s2')s2Poll=t;else s3Poll=t;
+  if(which==='s2')s2Poll=t;else if(which==='s4')s4PollTimer=t;else s3Poll=t;
 }
 
 // ---- STAGE 2 ----
@@ -1141,6 +1165,89 @@ function histTable(rows){
     const typ=r.display_type||(r.stage===2?'NHP':'Contract');
     h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(typ)}</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;});
   return h+'</tbody></table>';
+}
+
+// ---- STAGE 4: CONTRACT QA INTELLIGENCE ----
+let s4Poll=null;
+function startStage4(){
+  const spec=$('s4-specification').files[0];
+  if(!spec){alert('Specification PDF is required.');return}
+  if(!$('s4-consultant').value){alert('Select the Consultant for this deal.');return}
+  $('s4UploadCard').style.display='none';$('s4ProgCard').style.display='block';$('s4Results').innerHTML='';
+  $('s4ProgFill').style.width='5%';$('s4ProgTitle').classList.add('loading');$('s4ProgTxt').textContent='Uploading...';
+  const fd=new FormData();
+  fd.append('specification',spec);
+  const wd=$('s4-working_drawings').files[0];if(wd)fd.append('working_drawings',wd);
+  const nhp=$('s4-nhp').files[0];if(nhp)fd.append('nhp',nhp);
+  const vos=$('s4-vos').files[0];if(vos)fd.append('vos',vos);
+  fd.append('deal_code',$('s4-code').value.trim());
+  fd.append('consultant_name',$('s4-consultant').value);
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage4/review');xhr.timeout=600000;
+  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s4ProgFill'),$('s4ProgTxt'),$('s4ProgTitle'),renderStage4,'s4');}else{alert(d.error||'Upload failed');resetStage4();}}catch(e){alert('Upload failed');resetStage4();}};
+  xhr.onerror=()=>{alert('Network error');resetStage4();};
+  xhr.send(fd);
+}
+function resetStage4(){if(s4Poll)clearInterval(s4Poll);$('s4UploadCard').style.display='block';$('s4ProgCard').style.display='none';loadStage4History();}
+
+function renderStage4(d){
+  $('s4ProgCard').style.display='none';
+  let h=verdictBlock(d.verdict,d.verdict_reason);
+  // QA Score bar
+  const score=d.qa_score||0;
+  const scoreColor=score>=80?'var(--grn)':score>=50?'var(--ylw)':'var(--acc)';
+  h+=`<div class="card"><h2>QA Score: ${score}%</h2><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${score}%;background:${scoreColor}"></div></div></div><div class="meta"><span style="color:var(--grn)">Passed: ${d.passed||0}</span><span style="color:var(--acc)">Failed: ${d.failed||0}</span><span style="color:var(--ylw)">Warnings: ${d.warnings||0}</span><span>Total Rules: ${d.total_rules||0}</span></div></div>`;
+  // Findings by result
+  const findings=d.findings||[];
+  if(findings.length){
+    // Failures first
+    const fails=findings.filter(f=>f.result==='FAIL');
+    const warns=findings.filter(f=>f.result==='WARNING');
+    const passes=findings.filter(f=>f.result==='PASS');
+    if(fails.length){
+      h+=`<div class="card"><h2 style="color:var(--acc)">Failed Rules (${fails.length})</h2>`;
+      fails.forEach(f=>{h+=findingCard(f);});
+      h+=`</div>`;
+    }
+    if(warns.length){
+      h+=`<div class="card"><h2 style="color:var(--ylw)">Warnings (${warns.length})</h2>`;
+      warns.forEach(f=>{h+=findingCard(f);});
+      h+=`</div>`;
+    }
+    if(passes.length){
+      h+=`<details class="card"><summary style="cursor:pointer;font-weight:600">Passed Rules (${passes.length}) — click to expand</summary>`;
+      passes.forEach(f=>{h+=findingCard(f);});
+      h+=`</details>`;
+    }
+  }
+  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetStage4()">New QA Intelligence Check</button>`;
+  $('s4Results').innerHTML=h;loadStage4History();
+}
+
+function findingCard(f){
+  const resColor=f.result==='PASS'?'var(--grn)':f.result==='FAIL'?'var(--acc)':'var(--ylw)';
+  let h=`<div class="iss ${sbClass(f.severity)}" style="border-left:3px solid ${resColor}">`;
+  h+=`<div class="ihead"><span class="sev ${sevClass(f.severity)}">${esc(f.severity||'')}</span><span class="badge" style="background:${resColor};color:#fff">${esc(f.result||'')}</span><span class="iref">${esc(f.rule_ref||'')}</span><span style="font-size:0.72rem;color:var(--g500)">${esc(f.category||'')}</span></div>`;
+  h+=`<div class="irow" style="font-weight:600">${esc(f.description||'')}</div>`;
+  if(f.evidence_found)h+=`<div class="irow"><b>Found:</b> ${esc(f.evidence_found)}</div>`;
+  if(f.evidence_expected&&f.result!=='PASS')h+=`<div class="irow"><b>Expected:</b> ${esc(f.evidence_expected)}</div>`;
+  if(f.corrective_action)h+=`<div class="irow"><b>Action:</b> ${esc(f.corrective_action)}</div>`;
+  if(f.documents_affected)h+=`<div class="irow" style="font-size:0.72rem;color:var(--g500)">Documents: ${esc(f.documents_affected)}</div>`;
+  if(f.confidence)h+=`<div class="irow" style="font-size:0.72rem;color:var(--g500)">Confidence: ${Math.round(f.confidence*100)}%</div>`;
+  h+=`</div>`;
+  return h;
+}
+
+async function loadStage4History(){
+  try{
+    const rows=await fetch('/api/stage4/submissions'+(_ownScope()?'?consultant='+encodeURIComponent(currentUser.full_name||''):'')).then(r=>r.json());
+    if(!rows||!rows.length){$('s4History').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">None yet.</p>';return}
+    let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Score</th><th>Verdict</th><th>Date</th></tr></thead><tbody>';
+    rows.forEach(r=>{
+      const v=(r.verdict||'').toUpperCase();let b='b-info';if(v.includes('READY'))b='b-pass';else if(v.includes('DO NOT'))b='b-fail';else b='b-warn';
+      h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${r.qa_score||0}%</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;
+    });
+    $('s4History').innerHTML=h+'</tbody></table>';
+  }catch(e){}
 }
 
 // ---- RULES ADMIN ----
