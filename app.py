@@ -25,6 +25,10 @@ import contract_qa_intelligence
 # Users / roles (additive — login + role-based permissions + user management)
 import users_db
 
+# V1 — Contract QA Intelligence (additive; existing Stage 3 untouched)
+import db_v1_migrations
+import contract_qa_v1_engine
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024  # 200MB
 
@@ -65,6 +69,8 @@ def _ensure_db():
             db_v2.init_v2()  # create V2 tables + seed rule library (idempotent)
             db_v3_contract_qa.init_v3()  # V3 Contract QA Intelligence tables + rules (idempotent)
             users_db.init_users()  # create users table + seed accounts (idempotent)
+            db_v1_migrations.run_v1_migrations()  # V1: feature flags + rule upgrades (idempotent)
+            contract_qa_v1_engine.seed_tier1_rules()  # V1: seed 18 Contract QA rules (idempotent)
             _db_ready = True
         except Exception as e:
             import sys, traceback
@@ -857,7 +863,7 @@ def api_contract_reviews():
     for r in rows:
         r.pop("result_payload", None)  # keep list light
         # Clean, never-UNKNOWN type label: Stage 2 = NHP, Stage 3 = Contract.
-        r["display_type"] = "NHP" if r.get("stage") == 2 else "Contract"
+        r["display_type"] = "NHP" if r.get("stage") == 2 else ("Contract QA V1" if r.get("stage") == 4 else "Contract")
     return jsonify(rows)
 
 
@@ -1075,6 +1081,162 @@ def api_learning_fps():
     _ensure_db()
     days = request.args.get("days", default=30, type=int)
     return jsonify(db_v2.get_recent_false_positive_issues(days))
+
+
+# ===========================================================================
+# V1 — FEATURE FLAGS API
+# ===========================================================================
+@app.route("/api/feature-flags")
+def api_feature_flags():
+    """Return all feature flags. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    return jsonify(db_v1_migrations.get_all_feature_flags())
+
+
+@app.route("/api/feature-flags/<flag_name>", methods=["PATCH"])
+def api_update_feature_flag(flag_name):
+    """Toggle a feature flag. Admin only."""
+    _ensure_db()
+    if not _require_admin():
+        return jsonify({"error": "Admin access required"}), 403
+    data = request.get_json() or {}
+    enabled = data.get("enabled")
+    allowed_roles = data.get("allowed_roles")
+    db_v1_migrations.update_feature_flag(flag_name, enabled=enabled, allowed_roles=allowed_roles)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/feature-flags/check")
+def api_check_feature_flag():
+    """Check if a feature flag is enabled for the current user's role.
+    Query params: flag_name, role"""
+    _ensure_db()
+    flag_name = request.args.get("flag_name", "")
+    role = request.args.get("role", "")
+    enabled = db_v1_migrations.is_feature_enabled(flag_name, user_role=role)
+    return jsonify({"enabled": enabled, "flag_name": flag_name})
+
+
+# ===========================================================================
+# V1 — CONTRACT QA V1 (Rule-Based Quality Checks)
+# ===========================================================================
+def _run_contract_qa_v1_background(pending_id, paths, deal_code, consultant_name):
+    """Background thread for Contract QA V1 rule execution."""
+    try:
+        result = contract_qa_v1_engine.run_contract_qa_v1(
+            paths, deal_code=deal_code, consultant_name=consultant_name,
+            progress_cb=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
+        )
+        # Save as a contract_review with stage=4 (Contract QA V1)
+        review_id = db_v2.save_contract_review({
+            "deal_code": result.get("deal_code", ""),
+            "stage": 4,
+            "consultant_name": consultant_name,
+            "job_category": "Contract QA V1",
+            "verdict": result.get("verdict", ""),
+            "verdict_reason": result.get("verdict_reason", ""),
+            "result_payload": result,
+            "issues": _v1_findings_to_issues(result.get("findings", [])),
+        })
+        result["contract_review_id"] = review_id
+        # Save individual rule results
+        for rr in result.get("results", []):
+            try:
+                db_v1_migrations.save_rule_result(
+                    job_id=review_id,
+                    rule_id=rr.get("rule_id", 0),
+                    domain="Contract",
+                    result=rr.get("result", "WARNING"),
+                    severity=rr.get("severity", ""),
+                    evidence_found=rr.get("evidence_found", ""),
+                    evidence_expected=rr.get("evidence_expected", ""),
+                    recommendation=rr.get("recommendation", ""),
+                    confidence=rr.get("confidence", 0.0),
+                    execution_time_ms=rr.get("execution_time_ms", 0),
+                )
+            except Exception:
+                pass
+        db.complete_pending_review(pending_id, json.dumps(result, default=str), review_id)
+    except Exception as e:
+        traceback.print_exc()
+        db.fail_pending_review(pending_id, f"Contract QA V1 failed: {e}")
+    finally:
+        for p in paths.values():
+            try:
+                if p and os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+
+def _v1_findings_to_issues(findings):
+    """Convert V1 rule findings to the contract_issues format for DB storage."""
+    issues = []
+    for f in findings:
+        issues.append({
+            "issue_ref": f.get("rule_ref", ""),
+            "severity": f.get("severity", ""),
+            "category": f.get("category", ""),
+            "section": f.get("category", ""),
+            "signed_source": f.get("evidence_expected", ""),
+            "contract_output": f.get("evidence_found", ""),
+            "discrepancy": f.get("description", ""),
+            "required_action": f.get("recommendation", ""),
+            "status": "Open",
+        })
+    return issues
+
+
+@app.route("/api/contract-qa-v1/review", methods=["POST"])
+def api_contract_qa_v1_review():
+    """Submit documents for Contract QA V1 rule-based review.
+    Feature-flagged: returns 403 if contract_qa is disabled."""
+    _ensure_db()
+    # Check feature flag
+    # Get user role from the request (form field or header)
+    user_code = (request.form.get("user_code") or request.headers.get("X-User-Code") or "").strip().upper()
+    user = users_db.get_user_by_code(user_code) if user_code else None
+    user_role = user["role"] if user else ""
+    if not db_v1_migrations.is_feature_enabled("contract_qa", user_role=user_role):
+        return jsonify({"error": "Contract QA V1 is not enabled for your account. Contact your admin."}), 403
+
+    paths = _save_stage_uploads("v1")
+    deal_code = (request.form.get("deal_code") or "").strip()
+    consultant_name = (request.form.get("consultant_name") or "").strip()
+    if not consultant_name:
+        return jsonify({"error": "Consultant is required."}), 400
+    if not paths.get("specification") and not paths.get("nhp"):
+        return jsonify({"error": "At least a Specification or NHP document is required."}), 400
+
+    pending_id = str(uuid.uuid4())[:12]
+    db.create_pending_review(pending_id, paths.get("specification", "contract_qa_v1"))
+    threading.Thread(target=_run_contract_qa_v1_background,
+                     args=(pending_id, paths, deal_code, consultant_name), daemon=True).start()
+    return jsonify({"review_id": pending_id, "status": "processing"}), 202
+
+
+@app.route("/api/contract-qa-v1/history")
+def api_contract_qa_v1_history():
+    """Return Contract QA V1 reviews (stage=4)."""
+    _ensure_db()
+    rows = db_v2.get_contract_reviews(stage=4)
+    consultant = (request.args.get("consultant") or "").strip()
+    if consultant:
+        fn = _first_name(consultant)
+        rows = [r for r in rows if _first_name(r.get("consultant_name")) == fn]
+    for r in rows:
+        r.pop("result_payload", None)
+        r["display_type"] = "Contract QA V1"
+    return jsonify(rows)
+
+
+@app.route("/api/contract-qa-v1/score/<int:review_id>")
+def api_contract_qa_v1_score(review_id):
+    """Return the QA score for a Contract QA V1 job."""
+    _ensure_db()
+    return jsonify(db_v1_migrations.get_qa_score(review_id))
 
 
 # ===========================================================================

@@ -198,6 +198,7 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
       <button onclick="showSection('sec-stage2',this)">Stage 2: NHP</button>
       <button onclick="showSection('sec-stage3',this)">Stage 3: Contract</button>
       <button onclick="showSection('sec-stage4',this);loadStage4History()">Stage 4: QA Intel</button>
+      <button onclick="showSection('sec-contract-qa',this);loadV1History()" id="contractQaBtn">Contract QA V1</button>
       <button onclick="showSection('sec-history',this);loadHistory()">History</button>
       <button onclick="showSection('sec-reports',this);loadReports()">Reports</button>
       <button onclick="showSection('sec-heath',this);loadHeath()">Heath Dashboard</button>
@@ -388,12 +389,35 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
   <div class="card"><h2>Recent QA Intelligence Submissions</h2><div id="s4History"></div></div>
 </div>
 
+<!-- ============ CONTRACT QA V1 ============ -->
+<div id="sec-contract-qa" class="section">
+  <div class="card" id="v1UploadCard">
+    <h2>Contract QA V1 — Rule-Based Quality Checks</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Executes 18 Tier 1 quality rules against the contract documents. Each rule produces PASS/FAIL/WARNING with evidence. Upload the Specification and NHP at minimum; Working Drawings and VOs are optional but improve coverage.</p>
+    <div class="form-row"><div><label>Deal Code</label><input id="v1-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="v1-consultant"><option value="">Select consultant...</option></select></div></div>
+    <div class="s3-grid">
+      <div><label>Specification *</label><input type="file" id="v1-specification" accept=".pdf"></div>
+      <div><label>NHP / Contract Pricing *</label><input type="file" id="v1-nhp" accept=".pdf"></div>
+      <div><label>Working Drawings (optional)</label><input type="file" id="v1-working_drawings" accept=".pdf"></div>
+      <div><label>VOs / NHP Changes (optional)</label><input type="file" id="v1-vos" accept=".pdf"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startContractQAV1()">Run Contract QA V1</button>
+  </div>
+  <div class="card" id="v1ProgCard" style="display:none">
+    <h2 class="loading" id="v1ProgTitle">Running Contract QA V1...</h2>
+    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="v1ProgFill"></div></div></div>
+    <div class="prog-txt" id="v1ProgTxt">Uploading...</div>
+  </div>
+  <div id="v1Results"></div>
+  <div class="card"><h2>Recent Contract QA V1 Reviews</h2><div id="v1History"></div></div>
+</div>
+
 <!-- ============ RULES ADMIN ============ -->
 <div id="sec-rules" class="section">
   <div class="card">
     <h2>Rule Library</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3/4 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
-    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option><option value="Stage 4">Stage 4 (QA Intelligence)</option></select></div></div>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3/4/V1 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
+    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option><option value="Stage 4">Stage 4 (QA Intelligence)</option><option value="Contract">Contract QA V1</option></select></div></div>
     <div id="rulesTable"></div>
   </div>
   <div class="card" id="addRuleCard">
@@ -440,6 +464,11 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
     <div class="form-row"><div><label>Login Code (optional — auto-generated if blank)</label><input id="um-code" placeholder="6 chars, e.g. JSMITH" maxlength="10" oninput="this.value=this.value.toUpperCase()"></div><div style="display:flex;align-items:flex-end"><button class="btn btn-green" style="width:100%" onclick="createUser()">Add User</button></div></div>
     <div id="newUserResult" style="margin-top:0.5rem"></div>
     <div id="usersTable" style="margin-top:1rem"></div>
+  </div>
+  <div class="card">
+    <h2>Feature Flags</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Toggle features on/off. Changes take effect immediately for the allowed roles.</p>
+    <div id="featureFlagsTable"></div>
   </div>
   <div class="card" style="border:1px solid #2d6a4f44">
     <h2 style="color:#2d6a4f">Review History</h2>
@@ -495,6 +524,7 @@ async function validateGate(){
 // Map each nav button + section to a permission key so we can show/hide by role.
 const NAV_PERMS=[
   ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],['sec-stage4','stage4'],
+  ['sec-contract-qa','contract_qa'],
   ['sec-history','history'],['sec-reports','reports'],['sec-heath','heath_dashboard'],
   ['sec-prelog','prelog'],['sec-plans','plans'],['sec-rules','rules'],
   ['sec-learning','learning']
@@ -555,7 +585,7 @@ function updateGoBtn(){
 let CONSULTANTS=[];
 async function loadConsultants(){
   try{CONSULTANTS=await fetch('/api/consultants').then(r=>r.json());}catch(e){CONSULTANTS=[];}
-  ['s1-consultant','s2-consultant','s3-consultant','s4-consultant'].forEach(id=>{
+  ['s1-consultant','s2-consultant','s3-consultant','s4-consultant','v1-consultant'].forEach(id=>{
     const sel=$(id);if(!sel)return;
     sel.innerHTML='<option value="">Select consultant...</option>'+CONSULTANTS.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
     // If the logged-in user is one of the consultants, pre-select their name.
@@ -922,6 +952,7 @@ async function toggleUser(id,active){
 // ============ ADMIN — ACCESS CODES ============
 async function loadAdmin(){
   loadUsers();
+  loadFeatureFlags();
   const codes=await fetch('/api/access-codes').then(r=>r.json());
   if(!codes.length){$('codesTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No codes yet.</p>';return}
   let h='<table class="tbl"><thead><tr><th>Code</th><th>Consultant</th><th>Email</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>';
@@ -1041,7 +1072,7 @@ function pollStage(reviewId,fill,txt,title,onDone,which){
       else if(d.status==='failed'){clearInterval(t);title.textContent='Failed';title.classList.remove('loading');txt.textContent=d.error||'Review failed';}
     }catch(e){console.warn('poll',e)}
   },3000);
-  if(which==='s2')s2Poll=t;else if(which==='s4')s4PollTimer=t;else s3Poll=t;
+  if(which==='s2')s2Poll=t;else if(which==='s4')s4Poll=t;else if(which==='v1')v1Poll=t;else s3Poll=t;
 }
 
 // ---- STAGE 2 ----
@@ -1295,6 +1326,114 @@ async function loadLearning(){
   rows.forEach(r=>{h+=`<tr><td>${esc(r.deal_code||'-')}</td><td><span class="sev ${sevClass(r.severity)}">${esc(r.severity||'')}</span></td><td>${esc(r.category||'')}</td><td>${esc(r.section||'')}</td><td style="max-width:300px">${esc(r.discrepancy||'')}</td><td>${esc(r.status||'')}</td><td>${esc(r.status_note||'')}</td></tr>`;});
   $('learningTable').innerHTML=h+'</tbody></table>';
 }
+
+// ============ CONTRACT QA V1 ============
+let v1Poll=null;
+function startContractQAV1(){
+  if(!$('v1-consultant').value){alert('Select the Consultant for this deal.');return}
+  if(!$('v1-specification').files[0]&&!$('v1-nhp').files[0]){alert('Upload at least a Specification or NHP document.');return}
+  $('v1UploadCard').style.display='none';$('v1ProgCard').style.display='block';$('v1Results').innerHTML='';
+  $('v1ProgFill').style.width='5%';$('v1ProgTitle').classList.add('loading');$('v1ProgTxt').textContent='Uploading...';
+  const fd=new FormData();
+  ['specification','nhp','working_drawings','vos'].forEach(k=>{const f=$('v1-'+k).files[0];if(f)fd.append(k,f);});
+  fd.append('deal_code',$('v1-code').value.trim());
+  fd.append('consultant_name',$('v1-consultant').value);
+  fd.append('user_code',currentUser?currentUser.code:'');
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/contract-qa-v1/review');xhr.timeout=300000;
+  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('v1ProgFill'),$('v1ProgTxt'),$('v1ProgTitle'),renderContractQAV1,'v1');}else{alert(d.error||'Upload failed');resetV1();}}catch(e){alert('Upload failed');resetV1();}};
+  xhr.onerror=()=>{alert('Network error');resetV1();};
+  xhr.send(fd);
+}
+function resetV1(){if(v1Poll)clearInterval(v1Poll);$('v1UploadCard').style.display='block';$('v1ProgCard').style.display='none';loadV1History();}
+
+function renderContractQAV1(d){
+  $('v1ProgCard').style.display='none';
+  const s=d.score||{};
+  let h=verdictBlock(d.verdict,d.verdict_reason);
+  // Score dashboard
+  h+=`<div class="stats" style="grid-template-columns:repeat(5,1fr)">`;
+  h+=`<div class="stat"><div class="num" style="color:${s.score>=80?'var(--grn)':s.score>=50?'var(--ylw)':'var(--acc)'}">${s.score||0}%</div><div class="lbl">QA Score</div></div>`;
+  h+=`<div class="stat"><div class="num">${s.total||0}</div><div class="lbl">Rules Checked</div></div>`;
+  h+=`<div class="stat"><div class="num" style="color:var(--grn)">${s.passed||0}</div><div class="lbl">Passed</div></div>`;
+  h+=`<div class="stat"><div class="num" style="color:var(--acc)">${s.failed||0}</div><div class="lbl">Failed</div></div>`;
+  h+=`<div class="stat"><div class="num" style="color:var(--ylw)">${s.warnings||0}</div><div class="lbl">Warnings</div></div>`;
+  h+=`</div>`;
+  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}<span>Consultant: <strong>${esc(d.consultant_name||'')}</strong></span><span>Time: ${d.total_execution_time_ms?Math.round(d.total_execution_time_ms/1000)+'s':'-'}</span></div>`;
+  // Findings grouped by category
+  const findings=d.findings||[];
+  if(findings.length){
+    h+=`<div class="card"><h2>Findings (${findings.length})</h2>`;
+    const byCat={}; findings.forEach(f=>{(byCat[f.category]=byCat[f.category]||[]).push(f)});
+    Object.keys(byCat).forEach(cat=>{
+      h+=`<div class="sec-head">${esc(cat)}</div>`;
+      byCat[cat].forEach(f=>{
+        h+=`<div class="iss ${sbClass(f.severity)}">`;
+        h+=`<div class="ihead"><span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span><span class="badge b-info">${esc(f.category)}</span><span class="badge ${f.result==='FAIL'?'b-fail':'b-warn'}">${esc(f.result)}</span><span class="iref">${esc(f.rule_ref)}</span></div>`;
+        h+=`<div class="irow"><b>Rule:</b> ${esc(f.description||'')}</div>`;
+        if(f.evidence_found)h+=`<div class="irow"><b>Found:</b> ${esc(f.evidence_found)}</div>`;
+        if(f.evidence_expected)h+=`<div class="irow"><b>Expected:</b> ${esc(f.evidence_expected)}</div>`;
+        if(f.recommendation)h+=`<div class="irow"><b>Action:</b> ${esc(f.recommendation)}</div>`;
+        if(f.confidence!=null)h+=`<div class="irow" style="font-size:0.78rem;color:var(--g500)">Confidence: ${Math.round(f.confidence*100)}%</div>`;
+        h+=`</div>`;
+      });
+    });
+    h+=`</div>`;
+  } else {
+    h+=`<div class="card"><p style="font-size:0.85rem;color:var(--grn)">All rules passed. No findings.</p></div>`;
+  }
+  // Full rule results table
+  const results=d.results||[];
+  if(results.length){
+    h+=`<div class="card"><h2>All Rule Results</h2><table class="tbl"><thead><tr><th>Ref</th><th>Category</th><th>Result</th><th>Severity</th><th>Confidence</th><th>Time</th></tr></thead><tbody>`;
+    results.forEach(r=>{
+      const rc=r.result==='PASS'?'b-pass':r.result==='FAIL'?'b-fail':'b-warn';
+      h+=`<tr><td class="iref">${esc(r.rule_ref)}</td><td>${esc(r.category)}</td><td><span class="badge ${rc}">${esc(r.result)}</span></td><td><span class="sev ${sevClass(r.severity)}">${esc(r.severity)}</span></td><td>${Math.round((r.confidence||0)*100)}%</td><td>${r.execution_time_ms||0}ms</td></tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  }
+  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetV1()">New Contract QA V1</button>`;
+  $('v1Results').innerHTML=h;loadV1History();
+}
+
+async function loadV1History(){
+  try{const rows=await fetch('/api/contract-qa-v1/history'+(_ownScope()?'?'+_ownScope().substring(1):'')).then(r=>r.json());$('v1History').innerHTML=histTable(rows);}catch(e){}
+}
+
+// ============ FEATURE FLAGS (Admin) ============
+async function loadFeatureFlags(){
+  try{
+    const flags=await fetch('/api/feature-flags',{headers:{'X-User-Code':currentUser.code}}).then(r=>r.json());
+    if(!flags||flags.error){$('featureFlagsTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No feature flags.</p>';return}
+    let h='<table class="tbl"><thead><tr><th>Flag</th><th>Description</th><th>Enabled</th><th>Allowed Roles</th><th>Toggle</th></tr></thead><tbody>';
+    flags.forEach(f=>{
+      const roles=(f.allowed_roles||[]).join(', ');
+      h+=`<tr><td><strong>${esc(f.flag_name)}</strong></td><td style="max-width:250px">${esc(f.description||'')}</td><td><span class="badge ${f.enabled?'b-pass':'b-fail'}">${f.enabled?'ON':'OFF'}</span></td><td style="font-size:0.78rem">${esc(roles)}</td><td><button class="btn btn-sm ${f.enabled?'btn-red':'btn-green'}" onclick="toggleFlag('${esc(f.flag_name)}',${f.enabled?'false':'true'})">${f.enabled?'Disable':'Enable'}</button></td></tr>`;
+    });
+    $('featureFlagsTable').innerHTML=h+'</tbody></table>';
+  }catch(e){$('featureFlagsTable').innerHTML='<p style="font-size:0.85rem;color:var(--acc)">Failed to load flags.</p>';}
+}
+async function toggleFlag(name,enable){
+  await fetch(`/api/feature-flags/${name}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-User-Code':currentUser.code},body:JSON.stringify({enabled:enable})});
+  loadFeatureFlags();
+  // Also re-check nav visibility since contract_qa may have changed
+  checkContractQAFlag();
+}
+
+// Feature-flag-gated nav visibility for Contract QA V1
+async function checkContractQAFlag(){
+  if(!currentUser)return;
+  try{
+    const d=await fetch(`/api/feature-flags/check?flag_name=contract_qa&role=${currentUser.role}`).then(r=>r.json());
+    const btn=$('contractQaBtn');
+    if(btn){btn.style.display=d.enabled?'':'none';}
+  }catch(e){}
+}
+// Run on login
+const _origEnterApp=enterApp;
+enterApp=function(){
+  _origEnterApp();
+  checkContractQAFlag();
+};
 </script>
 </body>
 </html>

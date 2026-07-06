@@ -214,8 +214,12 @@ def get_rules(stage=None, active_only=False):
     if active_only:
         clauses.append("active=1")
     if stage:
-        clauses.append("(stage_applicability=? OR stage_applicability='Both')")
-        params.append(stage)
+        if stage == 'Contract':
+            # V1: filter by domain column for Contract QA rules
+            clauses.append("domain='Contract'")
+        else:
+            clauses.append("(stage_applicability=? OR stage_applicability='Both')")
+            params.append(stage)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY category, rule_ref"
