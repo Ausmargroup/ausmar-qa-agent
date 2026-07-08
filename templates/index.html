@@ -196,9 +196,7 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
     <nav>
       <button class="active" onclick="showSection('sec-review',this)">Stage 1: PSE</button>
       <button onclick="showSection('sec-stage2',this)">Stage 2: NHP</button>
-      <button onclick="showSection('sec-stage3',this)">Stage 3: Contract</button>
-      <button onclick="showSection('sec-stage4',this);loadStage4History()">Stage 4: QA Intel</button>
-      <button onclick="showSection('sec-contract-qa',this);loadV1History()" id="contractQaBtn">Contract QA V1</button>
+      <button onclick="showSection('sec-stage3',this);loadStage3History()">Stage 3: Contract QA</button>
       <button onclick="showSection('sec-history',this);loadHistory()">History</button>
       <button onclick="showSection('sec-reports',this);loadReports()">Reports</button>
       <button onclick="showSection('sec-heath',this);loadHeath()">Heath Dashboard</button>
@@ -340,84 +338,40 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
   <div class="card"><h2>Recent NHP Reviews</h2><div id="s2History"></div></div>
 </div>
 
-<!-- ============ STAGE 3: PRE-CONTRACT QA ============ -->
+<!-- ============ STAGE 3: CONTRACT QA (UNIFIED) ============ -->
 <div id="sec-stage3" class="section">
   <div class="card" id="s3UploadCard">
-    <h2>Stage 3 — Pre-Contract QA</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Two-pass check that the final contract pack reflects the signed source before issue. Pass 1 compares pricing &amp; specification; Pass 2 is an AI-assisted drawing review that points the reviewer to sheets needing human confirmation. Output is itemised by spec section and drawing page, matching the QA template. <strong>All three contract documents plus at least one signed source are required</strong> — otherwise the job is parked, not passed.</p>
+    <h2>Stage 3 — Contract QA</h2>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Unified contract quality check. Runs <strong>two engines</strong>: (1) NHP comparison — verifies signed VOs carried through to contract pricing/spec/drawings; (2) QA Intelligence — 18 automated rules checking consistency across all documents. Upload the Specification (required) plus as many supporting documents as available for maximum coverage.</p>
     <div class="form-row"><div><label>Deal Code</label><input id="s3-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="s3-consultant"><option value="">Select consultant...</option></select></div></div>
     <div class="form-row"><div><label>Job Category</label><select id="s3-cat"><option value="">Select...</option><option>CAT1 Standard</option><option>CAT2 Minor variations</option><option>CAT3 Major variations</option><option>CAT4 Complex/custom</option></select></div></div>
     <div class="s3-grid">
-      <div><label>Signed NHP / PSE (source) *</label><input type="file" id="s3-signed_nhp" accept=".pdf"></div>
+      <div><label>Signed NHP / PSE (source)</label><input type="file" id="s3-signed_nhp" accept=".pdf"></div>
       <div><label>Signed VOs / NHP Changes</label><input type="file" id="s3-signed_vos" accept=".pdf"></div>
       <div><label>Signed Red Pen markup</label><input type="file" id="s3-red_pen" accept=".pdf"></div>
       <div><label>Contract Specification *</label><input type="file" id="s3-contract_spec" accept=".pdf"></div>
-      <div><label>Contract NHP Pricing *</label><input type="file" id="s3-contract_pricing" accept=".pdf"></div>
-      <div><label>Working Drawings *</label><input type="file" id="s3-working_drawings" accept=".pdf"></div>
+      <div><label>Contract NHP Pricing</label><input type="file" id="s3-contract_pricing" accept=".pdf"></div>
+      <div><label>Working Drawings</label><input type="file" id="s3-working_drawings" accept=".pdf"></div>
     </div>
     <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startStage3()">Run Contract QA</button>
   </div>
   <div class="card" id="s3ProgCard" style="display:none">
-    <h2 class="loading" id="s3ProgTitle">Running contract QA...</h2>
+    <h2 class="loading" id="s3ProgTitle">Running Contract QA...</h2>
     <div class="prog"><div class="prog-bar"><div class="prog-fill" id="s3ProgFill"></div></div></div>
     <div class="prog-txt" id="s3ProgTxt">Uploading...</div>
   </div>
   <div id="s3Results"></div>
-  <div class="card"><h2>Recent Contract Reviews</h2><div id="s3History"></div></div>
+  <div class="card"><h2>Recent Contract QA Reviews</h2><div id="s3History"></div></div>
 </div>
 
-<!-- ============ STAGE 4: CONTRACT QA INTELLIGENCE ============ -->
-<div id="sec-stage4" class="section">
-  <div class="card" id="s4UploadCard">
-    <h2>Stage 4 — Contract QA Intelligence</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Runs 18 Tier 1 automated rules against the contract pack. Each rule checks a specific consistency/compliance requirement and returns PASS, FAIL, or WARNING with evidence. Upload the Specification (required) plus optional Working Drawings, NHP, and Variation Orders for maximum coverage.</p>
-    <div class="form-row"><div><label>Deal Code</label><input id="s4-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="s4-consultant"><option value="">Select consultant...</option></select></div></div>
-    <div class="s3-grid">
-      <div><label>Specification (PDF) *</label><input type="file" id="s4-specification" accept=".pdf"></div>
-      <div><label>Working Drawings (PDF)</label><input type="file" id="s4-working_drawings" accept=".pdf"></div>
-      <div><label>NHP Pricing (PDF)</label><input type="file" id="s4-nhp" accept=".pdf"></div>
-      <div><label>Variation Orders / NHP Changes (PDF)</label><input type="file" id="s4-vos" accept=".pdf"></div>
-    </div>
-    <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startStage4()">Run Contract QA Intelligence</button>
-  </div>
-  <div class="card" id="s4ProgCard" style="display:none">
-    <h2 class="loading" id="s4ProgTitle">Running QA Intelligence...</h2>
-    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="s4ProgFill"></div></div></div>
-    <div class="prog-txt" id="s4ProgTxt">Uploading...</div>
-  </div>
-  <div id="s4Results"></div>
-  <div class="card"><h2>Recent QA Intelligence Submissions</h2><div id="s4History"></div></div>
-</div>
 
-<!-- ============ CONTRACT QA V1 ============ -->
-<div id="sec-contract-qa" class="section">
-  <div class="card" id="v1UploadCard">
-    <h2>Contract QA V1 — Rule-Based Quality Checks</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">Executes 18 Tier 1 quality rules against the contract documents. Each rule produces PASS/FAIL/WARNING with evidence. Upload the Specification and NHP at minimum; Working Drawings and VOs are optional but improve coverage.</p>
-    <div class="form-row"><div><label>Deal Code</label><input id="v1-code" placeholder="e.g. S26JRGB2"></div><div><label>Consultant *</label><select id="v1-consultant"><option value="">Select consultant...</option></select></div></div>
-    <div class="s3-grid">
-      <div><label>Specification *</label><input type="file" id="v1-specification" accept=".pdf"></div>
-      <div><label>NHP / Contract Pricing *</label><input type="file" id="v1-nhp" accept=".pdf"></div>
-      <div><label>Working Drawings (optional)</label><input type="file" id="v1-working_drawings" accept=".pdf"></div>
-      <div><label>VOs / NHP Changes (optional)</label><input type="file" id="v1-vos" accept=".pdf"></div>
-    </div>
-    <button class="btn btn-primary" style="width:100%;margin-top:0.75rem" onclick="startContractQAV1()">Run Contract QA V1</button>
-  </div>
-  <div class="card" id="v1ProgCard" style="display:none">
-    <h2 class="loading" id="v1ProgTitle">Running Contract QA V1...</h2>
-    <div class="prog"><div class="prog-bar"><div class="prog-fill" id="v1ProgFill"></div></div></div>
-    <div class="prog-txt" id="v1ProgTxt">Uploading...</div>
-  </div>
-  <div id="v1Results"></div>
-  <div class="card"><h2>Recent Contract QA V1 Reviews</h2><div id="v1History"></div></div>
-</div>
 
 <!-- ============ RULES ADMIN ============ -->
 <div id="sec-rules" class="section">
   <div class="card">
     <h2>Rule Library</h2>
-    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3/4/V1 AI checks. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
-    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option><option value="Stage 4">Stage 4 (QA Intelligence)</option><option value="Contract">Contract QA V1</option></select></div></div>
+    <p style="font-size:0.8rem;color:var(--g500);margin-bottom:0.75rem">These rules drive the Stage 2/3 AI checks and Contract QA Intelligence rules. Edit severity, switch rules on/off, add exceptions (things the tool should NOT flag), and add new rules — all without a developer. Changes apply to the next review. Editing requires an admin code.</p>
+    <div class="form-row"><div><label>Filter by stage</label><select id="rule-stage-filter" onchange="loadRules()"><option value="">All</option><option value="Stage 2">Stage 2 (NHP)</option><option value="Stage 3">Stage 3 (Contract)</option><option value="Contract">Contract QA Rules</option></select></div></div>
     <div id="rulesTable"></div>
   </div>
   <div class="card" id="addRuleCard">
@@ -523,8 +477,7 @@ async function validateGate(){
 
 // Map each nav button + section to a permission key so we can show/hide by role.
 const NAV_PERMS=[
-  ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],['sec-stage4','stage4'],
-  ['sec-contract-qa','contract_qa'],
+  ['sec-review','stage1'],['sec-stage2','stage2'],['sec-stage3','stage3'],
   ['sec-history','history'],['sec-reports','reports'],['sec-heath','heath_dashboard'],
   ['sec-prelog','prelog'],['sec-plans','plans'],['sec-rules','rules'],
   ['sec-learning','learning']
@@ -585,7 +538,7 @@ function updateGoBtn(){
 let CONSULTANTS=[];
 async function loadConsultants(){
   try{CONSULTANTS=await fetch('/api/consultants').then(r=>r.json());}catch(e){CONSULTANTS=[];}
-  ['s1-consultant','s2-consultant','s3-consultant','s4-consultant','v1-consultant'].forEach(id=>{
+  ['s1-consultant','s2-consultant','s3-consultant'].forEach(id=>{
     const sel=$(id);if(!sel)return;
     sel.innerHTML='<option value="">Select consultant...</option>'+CONSULTANTS.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
     // If the logged-in user is one of the consultants, pre-select their name.
@@ -1058,7 +1011,7 @@ async function wipeHistory(){
 // ===========================================================================
 // V2 — STAGE 2 / STAGE 3 / RULES / LEARNING
 // ===========================================================================
-let s2Poll=null,s3Poll=null,s4PollTimer=null;
+let s2Poll=null,s3Poll=null;
 const sevClass=s=>'sev-'+(s||'medium').toLowerCase();
 const sbClass=s=>'sb-'+(s||'medium').toLowerCase();
 
@@ -1072,7 +1025,7 @@ function pollStage(reviewId,fill,txt,title,onDone,which){
       else if(d.status==='failed'){clearInterval(t);title.textContent='Failed';title.classList.remove('loading');txt.textContent=d.error||'Review failed';}
     }catch(e){console.warn('poll',e)}
   },3000);
-  if(which==='s2')s2Poll=t;else if(which==='s4')s4Poll=t;else if(which==='v1')v1Poll=t;else s3Poll=t;
+  if(which==='s2')s2Poll=t;else s3Poll=t;
 }
 
 // ---- STAGE 2 ----
@@ -1112,11 +1065,11 @@ async function loadStage2History(){
   try{const rows=await fetch('/api/contract-reviews?stage=2'+_ownScope()).then(r=>r.json());$('s2History').innerHTML=histTable(rows);}catch(e){}
 }
 
-// ---- STAGE 3 ----
+// ---- STAGE 3: UNIFIED CONTRACT QA ----
 const S3_KEYS=['signed_nhp','signed_vos','red_pen','contract_spec','contract_pricing','working_drawings'];
 function startStage3(){
-  const need=['signed_nhp','contract_spec','contract_pricing','working_drawings'];
-  for(const k of need){if(!$('s3-'+k).files[0]){alert('Missing required document: '+k.replace(/_/g,' ')+'. Stage 3 needs the signed source plus all three contract documents, or it parks the job.');return}}
+  // Only contract_spec is strictly required (for QA Intelligence rules)
+  if(!$('s3-contract_spec').files[0]){alert('Contract Specification is required.');return}
   if(!$('s3-consultant').value){alert('Select the Consultant for this deal.');return}
   $('s3UploadCard').style.display='none';$('s3ProgCard').style.display='block';$('s3Results').innerHTML='';
   $('s3ProgFill').style.width='5%';$('s3ProgTitle').classList.add('loading');$('s3ProgTxt').textContent='Uploading...';
@@ -1125,7 +1078,7 @@ function startStage3(){
   fd.append('deal_code',$('s3-code').value.trim());
   fd.append('job_category',$('s3-cat').value);
   fd.append('consultant_name',$('s3-consultant').value);
-  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage3/review');xhr.timeout=300000;
+  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage3/review');xhr.timeout=600000;
   xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s3ProgFill'),$('s3ProgTxt'),$('s3ProgTitle'),renderStage3,'s3');}else{alert(d.error||'Upload failed');resetStage3();}}catch(e){alert('Upload failed');resetStage3();}};
   xhr.onerror=()=>{alert('Network error');resetStage3();};
   xhr.send(fd);
@@ -1135,11 +1088,51 @@ function resetStage3(){if(s3Poll)clearInterval(s3Poll);$('s3UploadCard').style.d
 function renderStage3(d){
   $('s3ProgCard').style.display='none';
   let h=verdictBlock(d.verdict,d.verdict_reason);
-  const s=d.consultant_summary||{};
-  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}${d.job_category?`<span>${esc(d.job_category)}</span>`:''}<span>Pass 1: ${d.pass1_count||0}</span><span>Pass 2: ${d.pass2_count||0}</span></div>`;
-  if(s.recommendation){h+=`<div class="card"><h2>Consultant Summary</h2><p style="font-size:0.85rem"><strong>Recommendation:</strong> ${esc(s.recommendation)}</p><div class="meta"><span class="sev sev-critical">Critical ${s.critical||0}</span><span class="sev sev-high">High ${s.high||0}</span><span class="sev sev-medium">Medium ${s.medium||0}</span><span class="sev sev-low">Low ${s.low||0}</span><span class="sev sev-observation">Obs ${s.observation||0}</span></div></div>`}
-  h+=`<div class="hint">Pass 2 drawing findings are AI-assisted pointers — each one must be confirmed by a human reviewer on the actual drawing before action.</div>`;
-  h+=issuesBySection(d.issues||[],d.contract_review_id);
+  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}${d.job_category?`<span>${esc(d.job_category)}</span>`:''}</div>`;
+
+  // --- QA Intelligence section ---
+  const qi=d.qa_intelligence;
+  if(qi){
+    const score=qi.qa_score||0;
+    const scoreColor=score>=80?'var(--grn)':score>=50?'var(--ylw)':'var(--acc)';
+    h+=`<div class="card"><h2>QA Intelligence Score: ${score}%</h2><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${score}%;background:${scoreColor}"></div></div></div><div class="meta"><span style="color:var(--grn)">Passed: ${qi.passed||0}</span><span style="color:var(--acc)">Failed: ${qi.failed||0}</span><span style="color:var(--ylw)">Warnings: ${qi.warnings||0}</span><span>Total Rules: ${qi.total_rules||0}</span></div></div>`;
+    const findings=qi.findings||[];
+    if(findings.length){
+      const fails=findings.filter(f=>f.result==='FAIL');
+      const warns=findings.filter(f=>f.result==='WARNING');
+      const passes=findings.filter(f=>f.result==='PASS');
+      if(fails.length){
+        h+=`<div class="card"><h2 style="color:var(--acc)">Failed Rules (${fails.length})</h2>`;
+        fails.forEach(f=>{h+=findingCard(f);});
+        h+=`</div>`;
+      }
+      if(warns.length){
+        h+=`<div class="card"><h2 style="color:var(--ylw)">Warnings (${warns.length})</h2>`;
+        warns.forEach(f=>{h+=findingCard(f);});
+        h+=`</div>`;
+      }
+      if(passes.length){
+        h+=`<details class="card"><summary style="cursor:pointer;font-weight:600">Passed Rules (${passes.length}) — click to expand</summary>`;
+        passes.forEach(f=>{h+=findingCard(f);});
+        h+=`</details>`;
+      }
+    }
+  }
+
+  // --- NHP Comparison section ---
+  const nhp=d.nhp_comparison;
+  if(nhp){
+    const s=nhp.consultant_summary||d.consultant_summary||{};
+    h+=`<div class="card"><h2>NHP Comparison</h2><div class="meta"><span>Verdict: <strong>${esc(nhp.verdict||'')}</strong></span><span>Pass 1: ${nhp.pass1_count||d.pass1_count||0}</span><span>Pass 2: ${nhp.pass2_count||d.pass2_count||0}</span></div>`;
+    if(s.recommendation){h+=`<p style="font-size:0.85rem;margin-top:0.5rem"><strong>Recommendation:</strong> ${esc(s.recommendation)}</p><div class="meta"><span class="sev sev-critical">Critical ${s.critical||0}</span><span class="sev sev-high">High ${s.high||0}</span><span class="sev sev-medium">Medium ${s.medium||0}</span><span class="sev sev-low">Low ${s.low||0}</span><span class="sev sev-observation">Obs ${s.observation||0}</span></div>`}
+    h+=`</div>`;
+    h+=`<div class="hint">Pass 2 drawing findings are AI-assisted pointers — each one must be confirmed by a human reviewer on the actual drawing before action.</div>`;
+    const issues=nhp.issues||d.issues||[];
+    h+=issuesBySection(issues,d.contract_review_id);
+  } else if(!qi){
+    h+=`<div class="card"><p style="font-size:0.85rem;color:var(--g500)">NHP comparison was not run (missing signed source documents or contract pricing/drawings).</p></div>`;
+  }
+
   h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetStage3()">New Contract QA</button>`;
   $('s3Results').innerHTML=h;loadStage3History();
 }
@@ -1198,62 +1191,7 @@ function histTable(rows){
   return h+'</tbody></table>';
 }
 
-// ---- STAGE 4: CONTRACT QA INTELLIGENCE ----
-let s4Poll=null;
-function startStage4(){
-  const spec=$('s4-specification').files[0];
-  if(!spec){alert('Specification PDF is required.');return}
-  if(!$('s4-consultant').value){alert('Select the Consultant for this deal.');return}
-  $('s4UploadCard').style.display='none';$('s4ProgCard').style.display='block';$('s4Results').innerHTML='';
-  $('s4ProgFill').style.width='5%';$('s4ProgTitle').classList.add('loading');$('s4ProgTxt').textContent='Uploading...';
-  const fd=new FormData();
-  fd.append('specification',spec);
-  const wd=$('s4-working_drawings').files[0];if(wd)fd.append('working_drawings',wd);
-  const nhp=$('s4-nhp').files[0];if(nhp)fd.append('nhp',nhp);
-  const vos=$('s4-vos').files[0];if(vos)fd.append('vos',vos);
-  fd.append('deal_code',$('s4-code').value.trim());
-  fd.append('consultant_name',$('s4-consultant').value);
-  const xhr=new XMLHttpRequest();xhr.open('POST','/api/stage4/review');xhr.timeout=600000;
-  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('s4ProgFill'),$('s4ProgTxt'),$('s4ProgTitle'),renderStage4,'s4');}else{alert(d.error||'Upload failed');resetStage4();}}catch(e){alert('Upload failed');resetStage4();}};
-  xhr.onerror=()=>{alert('Network error');resetStage4();};
-  xhr.send(fd);
-}
-function resetStage4(){if(s4Poll)clearInterval(s4Poll);$('s4UploadCard').style.display='block';$('s4ProgCard').style.display='none';loadStage4History();}
-
-function renderStage4(d){
-  $('s4ProgCard').style.display='none';
-  let h=verdictBlock(d.verdict,d.verdict_reason);
-  // QA Score bar
-  const score=d.qa_score||0;
-  const scoreColor=score>=80?'var(--grn)':score>=50?'var(--ylw)':'var(--acc)';
-  h+=`<div class="card"><h2>QA Score: ${score}%</h2><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${score}%;background:${scoreColor}"></div></div></div><div class="meta"><span style="color:var(--grn)">Passed: ${d.passed||0}</span><span style="color:var(--acc)">Failed: ${d.failed||0}</span><span style="color:var(--ylw)">Warnings: ${d.warnings||0}</span><span>Total Rules: ${d.total_rules||0}</span></div></div>`;
-  // Findings by result
-  const findings=d.findings||[];
-  if(findings.length){
-    // Failures first
-    const fails=findings.filter(f=>f.result==='FAIL');
-    const warns=findings.filter(f=>f.result==='WARNING');
-    const passes=findings.filter(f=>f.result==='PASS');
-    if(fails.length){
-      h+=`<div class="card"><h2 style="color:var(--acc)">Failed Rules (${fails.length})</h2>`;
-      fails.forEach(f=>{h+=findingCard(f);});
-      h+=`</div>`;
-    }
-    if(warns.length){
-      h+=`<div class="card"><h2 style="color:var(--ylw)">Warnings (${warns.length})</h2>`;
-      warns.forEach(f=>{h+=findingCard(f);});
-      h+=`</div>`;
-    }
-    if(passes.length){
-      h+=`<details class="card"><summary style="cursor:pointer;font-weight:600">Passed Rules (${passes.length}) — click to expand</summary>`;
-      passes.forEach(f=>{h+=findingCard(f);});
-      h+=`</details>`;
-    }
-  }
-  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetStage4()">New QA Intelligence Check</button>`;
-  $('s4Results').innerHTML=h;loadStage4History();
-}
-
+// ---- findingCard renderer (used by Stage 3 unified results) ----
 function findingCard(f){
   const resColor=f.result==='PASS'?'var(--grn)':f.result==='FAIL'?'var(--acc)':'var(--ylw)';
   let h=`<div class="iss ${sbClass(f.severity)}" style="border-left:3px solid ${resColor}">`;
@@ -1266,19 +1204,6 @@ function findingCard(f){
   if(f.confidence)h+=`<div class="irow" style="font-size:0.72rem;color:var(--g500)">Confidence: ${Math.round(f.confidence*100)}%</div>`;
   h+=`</div>`;
   return h;
-}
-
-async function loadStage4History(){
-  try{
-    const rows=await fetch('/api/stage4/submissions'+(_ownScope()?'?consultant='+encodeURIComponent(currentUser.full_name||''):'')).then(r=>r.json());
-    if(!rows||!rows.length){$('s4History').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">None yet.</p>';return}
-    let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Score</th><th>Verdict</th><th>Date</th></tr></thead><tbody>';
-    rows.forEach(r=>{
-      const v=(r.verdict||'').toUpperCase();let b='b-info';if(v.includes('READY'))b='b-pass';else if(v.includes('DO NOT'))b='b-fail';else b='b-warn';
-      h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${r.qa_score||0}%</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;
-    });
-    $('s4History').innerHTML=h+'</tbody></table>';
-  }catch(e){}
 }
 
 // ---- RULES ADMIN ----
@@ -1327,113 +1252,7 @@ async function loadLearning(){
   $('learningTable').innerHTML=h+'</tbody></table>';
 }
 
-// ============ CONTRACT QA V1 ============
-let v1Poll=null;
-function startContractQAV1(){
-  if(!$('v1-consultant').value){alert('Select the Consultant for this deal.');return}
-  if(!$('v1-specification').files[0]&&!$('v1-nhp').files[0]){alert('Upload at least a Specification or NHP document.');return}
-  $('v1UploadCard').style.display='none';$('v1ProgCard').style.display='block';$('v1Results').innerHTML='';
-  $('v1ProgFill').style.width='5%';$('v1ProgTitle').classList.add('loading');$('v1ProgTxt').textContent='Uploading...';
-  const fd=new FormData();
-  ['specification','nhp','working_drawings','vos'].forEach(k=>{const f=$('v1-'+k).files[0];if(f)fd.append(k,f);});
-  fd.append('deal_code',$('v1-code').value.trim());
-  fd.append('consultant_name',$('v1-consultant').value);
-  fd.append('user_code',currentUser?currentUser.code:'');
-  const xhr=new XMLHttpRequest();xhr.open('POST','/api/contract-qa-v1/review');xhr.timeout=300000;
-  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText);if(xhr.status===202&&d.review_id){pollStage(d.review_id,$('v1ProgFill'),$('v1ProgTxt'),$('v1ProgTitle'),renderContractQAV1,'v1');}else{alert(d.error||'Upload failed');resetV1();}}catch(e){alert('Upload failed');resetV1();}};
-  xhr.onerror=()=>{alert('Network error');resetV1();};
-  xhr.send(fd);
-}
-function resetV1(){if(v1Poll)clearInterval(v1Poll);$('v1UploadCard').style.display='block';$('v1ProgCard').style.display='none';loadV1History();}
 
-function renderContractQAV1(d){
-  $('v1ProgCard').style.display='none';
-  const s=d.score||{};
-  let h=verdictBlock(d.verdict,d.verdict_reason);
-  // Score dashboard
-  h+=`<div class="stats" style="grid-template-columns:repeat(5,1fr)">`;
-  h+=`<div class="stat"><div class="num" style="color:${s.score>=80?'var(--grn)':s.score>=50?'var(--ylw)':'var(--acc)'}">${s.score||0}%</div><div class="lbl">QA Score</div></div>`;
-  h+=`<div class="stat"><div class="num">${s.total||0}</div><div class="lbl">Rules Checked</div></div>`;
-  h+=`<div class="stat"><div class="num" style="color:var(--grn)">${s.passed||0}</div><div class="lbl">Passed</div></div>`;
-  h+=`<div class="stat"><div class="num" style="color:var(--acc)">${s.failed||0}</div><div class="lbl">Failed</div></div>`;
-  h+=`<div class="stat"><div class="num" style="color:var(--ylw)">${s.warnings||0}</div><div class="lbl">Warnings</div></div>`;
-  h+=`</div>`;
-  h+=`<div class="meta">${d.deal_code?`<span>Deal: <strong>${esc(d.deal_code)}</strong></span>`:''}<span>Consultant: <strong>${esc(d.consultant_name||'')}</strong></span><span>Time: ${d.total_execution_time_ms?Math.round(d.total_execution_time_ms/1000)+'s':'-'}</span></div>`;
-  // Findings grouped by category
-  const findings=d.findings||[];
-  if(findings.length){
-    h+=`<div class="card"><h2>Findings (${findings.length})</h2>`;
-    const byCat={}; findings.forEach(f=>{(byCat[f.category]=byCat[f.category]||[]).push(f)});
-    Object.keys(byCat).forEach(cat=>{
-      h+=`<div class="sec-head">${esc(cat)}</div>`;
-      byCat[cat].forEach(f=>{
-        h+=`<div class="iss ${sbClass(f.severity)}">`;
-        h+=`<div class="ihead"><span class="sev ${sevClass(f.severity)}">${esc(f.severity)}</span><span class="badge b-info">${esc(f.category)}</span><span class="badge ${f.result==='FAIL'?'b-fail':'b-warn'}">${esc(f.result)}</span><span class="iref">${esc(f.rule_ref)}</span></div>`;
-        h+=`<div class="irow"><b>Rule:</b> ${esc(f.description||'')}</div>`;
-        if(f.evidence_found)h+=`<div class="irow"><b>Found:</b> ${esc(f.evidence_found)}</div>`;
-        if(f.evidence_expected)h+=`<div class="irow"><b>Expected:</b> ${esc(f.evidence_expected)}</div>`;
-        if(f.recommendation)h+=`<div class="irow"><b>Action:</b> ${esc(f.recommendation)}</div>`;
-        if(f.confidence!=null)h+=`<div class="irow" style="font-size:0.78rem;color:var(--g500)">Confidence: ${Math.round(f.confidence*100)}%</div>`;
-        h+=`</div>`;
-      });
-    });
-    h+=`</div>`;
-  } else {
-    h+=`<div class="card"><p style="font-size:0.85rem;color:var(--grn)">All rules passed. No findings.</p></div>`;
-  }
-  // Full rule results table
-  const results=d.results||[];
-  if(results.length){
-    h+=`<div class="card"><h2>All Rule Results</h2><table class="tbl"><thead><tr><th>Ref</th><th>Category</th><th>Result</th><th>Severity</th><th>Confidence</th><th>Time</th></tr></thead><tbody>`;
-    results.forEach(r=>{
-      const rc=r.result==='PASS'?'b-pass':r.result==='FAIL'?'b-fail':'b-warn';
-      h+=`<tr><td class="iref">${esc(r.rule_ref)}</td><td>${esc(r.category)}</td><td><span class="badge ${rc}">${esc(r.result)}</span></td><td><span class="sev ${sevClass(r.severity)}">${esc(r.severity)}</span></td><td>${Math.round((r.confidence||0)*100)}%</td><td>${r.execution_time_ms||0}ms</td></tr>`;
-    });
-    h+=`</tbody></table></div>`;
-  }
-  h+=`<button class="btn btn-primary" style="margin-top:0.5rem" onclick="resetV1()">New Contract QA V1</button>`;
-  $('v1Results').innerHTML=h;loadV1History();
-}
-
-async function loadV1History(){
-  try{const rows=await fetch('/api/contract-qa-v1/history'+(_ownScope()?'?'+_ownScope().substring(1):'')).then(r=>r.json());$('v1History').innerHTML=histTable(rows);}catch(e){}
-}
-
-// ============ FEATURE FLAGS (Admin) ============
-async function loadFeatureFlags(){
-  try{
-    const flags=await fetch('/api/feature-flags',{headers:{'X-User-Code':currentUser.code}}).then(r=>r.json());
-    if(!flags||flags.error){$('featureFlagsTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No feature flags.</p>';return}
-    let h='<table class="tbl"><thead><tr><th>Flag</th><th>Description</th><th>Enabled</th><th>Allowed Roles</th><th>Toggle</th></tr></thead><tbody>';
-    flags.forEach(f=>{
-      const roles=(f.allowed_roles||[]).join(', ');
-      h+=`<tr><td><strong>${esc(f.flag_name)}</strong></td><td style="max-width:250px">${esc(f.description||'')}</td><td><span class="badge ${f.enabled?'b-pass':'b-fail'}">${f.enabled?'ON':'OFF'}</span></td><td style="font-size:0.78rem">${esc(roles)}</td><td><button class="btn btn-sm ${f.enabled?'btn-red':'btn-green'}" onclick="toggleFlag('${esc(f.flag_name)}',${f.enabled?'false':'true'})">${f.enabled?'Disable':'Enable'}</button></td></tr>`;
-    });
-    $('featureFlagsTable').innerHTML=h+'</tbody></table>';
-  }catch(e){$('featureFlagsTable').innerHTML='<p style="font-size:0.85rem;color:var(--acc)">Failed to load flags.</p>';}
-}
-async function toggleFlag(name,enable){
-  await fetch(`/api/feature-flags/${name}`,{method:'PATCH',headers:{'Content-Type':'application/json','X-User-Code':currentUser.code},body:JSON.stringify({enabled:enable})});
-  loadFeatureFlags();
-  // Also re-check nav visibility since contract_qa may have changed
-  checkContractQAFlag();
-}
-
-// Feature-flag-gated nav visibility for Contract QA V1
-async function checkContractQAFlag(){
-  if(!currentUser)return;
-  try{
-    const d=await fetch(`/api/feature-flags/check?flag_name=contract_qa&role=${currentUser.role}`).then(r=>r.json());
-    const btn=$('contractQaBtn');
-    if(btn){btn.style.display=d.enabled?'':'none';}
-  }catch(e){}
-}
-// Run on login
-const _origEnterApp=enterApp;
-enterApp=function(){
-  _origEnterApp();
-  checkContractQAFlag();
-};
 </script>
 </body>
 </html>

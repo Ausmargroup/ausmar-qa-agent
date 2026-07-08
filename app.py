@@ -797,26 +797,139 @@ def api_stage2_review():
     return jsonify({"review_id": pending_id, "status": "processing"}), 202
 
 
-# ---- Stage 3: Pre-Contract QA (async) ----
+# ---- Stage 3: Unified Contract QA (NHP comparison + QA Intelligence rules) ----
 def _run_stage3_background(pending_id, paths, deal_code, consultant_name, job_category):
+    """Runs BOTH the existing NHP comparison engine AND the 18 Tier 1 QA Intelligence
+    rules, then merges results into a single combined payload."""
     try:
-        result = contract_qa_engine.run_contract_qa(
-            paths, deal_code=deal_code, consultant_name=consultant_name,
-            job_category=job_category,
-            progress_cb=lambda pct, msg: db.update_pending_progress(pending_id, pct, msg),
-        )
+        # --- Part A: Existing Stage 3 NHP comparison (Pass 1 + Pass 2) ---
+        # Only run if we have the signed source docs needed for comparison
+        stage3_result = None
+        source_keys = ["signed_nhp", "signed_vos", "nhp_changes"]
+        have_source = any(paths.get(k) for k in source_keys)
+        have_contract_docs = paths.get("contract_spec") and paths.get("contract_pricing") and paths.get("working_drawings")
+
+        if have_source and have_contract_docs:
+            db.update_pending_progress(pending_id, 5, "Running NHP comparison (Pass 1 & 2)...")
+            stage3_result = contract_qa_engine.run_contract_qa(
+                paths, deal_code=deal_code, consultant_name=consultant_name,
+                job_category=job_category,
+                progress_cb=lambda pct, msg: db.update_pending_progress(
+                    pending_id, 5 + int(pct * 0.4), f"NHP Comparison: {msg}"),
+            )
+        elif have_source or have_contract_docs:
+            # Partial docs — still try, engine will PARK if insufficient
+            db.update_pending_progress(pending_id, 5, "Running NHP comparison (partial docs)...")
+            stage3_result = contract_qa_engine.run_contract_qa(
+                paths, deal_code=deal_code, consultant_name=consultant_name,
+                job_category=job_category,
+                progress_cb=lambda pct, msg: db.update_pending_progress(
+                    pending_id, 5 + int(pct * 0.4), f"NHP Comparison: {msg}"),
+            )
+
+        # --- Part B: QA Intelligence rules (18 Tier 1) ---
+        # Map the uploaded field names to what the intelligence engine expects
+        intel_paths = {
+            "specification": paths.get("contract_spec") or paths.get("specification"),
+            "working_drawings": paths.get("working_drawings"),
+            "nhp": paths.get("contract_pricing") or paths.get("nhp"),
+            "vos": paths.get("signed_vos") or paths.get("nhp_changes") or paths.get("vos"),
+        }
+
+        intel_result = None
+        if intel_paths.get("specification"):
+            db.update_pending_progress(pending_id, 50, "Running QA Intelligence rules...")
+            intel_result = contract_qa_intelligence.run_contract_qa_intelligence(
+                intel_paths, deal_code=deal_code, consultant_name=consultant_name,
+                progress_cb=lambda pct, msg: db.update_pending_progress(
+                    pending_id, 50 + int(pct * 0.45), f"QA Rules: {msg}"),
+            )
+
+        # --- Merge results ---
+        db.update_pending_progress(pending_id, 96, "Merging results...")
+
+        # Build combined result
+        combined = {
+            "stage": 3,
+            "deal_code": deal_code,
+            "consultant_name": consultant_name,
+            "job_category": job_category,
+        }
+
+        # NHP comparison results
+        if stage3_result:
+            combined["nhp_comparison"] = {
+                "verdict": stage3_result.get("verdict", ""),
+                "verdict_reason": stage3_result.get("verdict_reason", ""),
+                "issues": stage3_result.get("issues", []),
+                "pass1_count": stage3_result.get("pass1_count", 0),
+                "pass2_count": stage3_result.get("pass2_count", 0),
+                "consultant_summary": stage3_result.get("consultant_summary", {}),
+            }
+            combined["issues"] = stage3_result.get("issues", [])
+            combined["pass1_count"] = stage3_result.get("pass1_count", 0)
+            combined["pass2_count"] = stage3_result.get("pass2_count", 0)
+            combined["consultant_summary"] = stage3_result.get("consultant_summary", {})
+        else:
+            combined["nhp_comparison"] = None
+            combined["issues"] = []
+            combined["pass1_count"] = 0
+            combined["pass2_count"] = 0
+            combined["consultant_summary"] = {}
+
+        # QA Intelligence results
+        if intel_result and intel_result.get("status") == "completed":
+            combined["qa_intelligence"] = {
+                "submission_id": intel_result.get("submission_id"),
+                "qa_score": intel_result.get("qa_score", 0),
+                "total_rules": intel_result.get("total_rules", 0),
+                "passed": intel_result.get("passed", 0),
+                "failed": intel_result.get("failed", 0),
+                "warnings": intel_result.get("warnings", 0),
+                "findings": intel_result.get("findings", []),
+                "verdict": intel_result.get("verdict", ""),
+                "verdict_reason": intel_result.get("verdict_reason", ""),
+            }
+        else:
+            combined["qa_intelligence"] = None
+
+        # Unified verdict: worst of both engines
+        verdicts_priority = ["DO NOT ISSUE", "ISSUE AFTER CORRECTIONS", "PARKED", "ISSUE WITH NOTED ITEMS", "READY TO ISSUE"]
+        v1 = (stage3_result or {}).get("verdict", "")
+        v2 = (intel_result or {}).get("verdict", "") if intel_result and intel_result.get("status") == "completed" else ""
+
+        def _verdict_rank(v):
+            for i, x in enumerate(verdicts_priority):
+                if x in (v or "").upper():
+                    return i
+            return len(verdicts_priority)
+
+        if v1 and v2:
+            combined["verdict"] = v1 if _verdict_rank(v1) <= _verdict_rank(v2) else v2
+            combined["verdict_reason"] = f"NHP Comparison: {(stage3_result or {}).get('verdict_reason','')} | QA Rules: {(intel_result or {}).get('verdict_reason','')}"
+        elif v1:
+            combined["verdict"] = v1
+            combined["verdict_reason"] = (stage3_result or {}).get("verdict_reason", "")
+        elif v2:
+            combined["verdict"] = v2
+            combined["verdict_reason"] = (intel_result or {}).get("verdict_reason", "")
+        else:
+            combined["verdict"] = "PARKED"
+            combined["verdict_reason"] = "Insufficient documents to run either engine."
+
+        # Save to contract_reviews (preserves Stage 3 history format)
         review_id = db_v2.save_contract_review({
-            "deal_code": result.get("deal_code", ""),
+            "deal_code": deal_code,
             "stage": 3,
             "consultant_name": consultant_name,
             "job_category": job_category,
-            "verdict": result.get("verdict", ""),
-            "verdict_reason": result.get("verdict_reason", ""),
-            "result_payload": result,
-            "issues": result.get("issues", []),
+            "verdict": combined["verdict"],
+            "verdict_reason": combined["verdict_reason"],
+            "result_payload": combined,
+            "issues": combined.get("issues", []),
         })
-        result["contract_review_id"] = review_id
-        db.complete_pending_review(pending_id, json.dumps(result, default=str), review_id)
+        combined["contract_review_id"] = review_id
+        db.complete_pending_review(pending_id, json.dumps(combined, default=str), review_id)
     except Exception as e:
         traceback.print_exc()
         db.fail_pending_review(pending_id, f"Contract QA failed: {e}")
@@ -838,8 +951,11 @@ def api_stage3_review():
     job_category = (request.form.get("job_category") or "").strip()
     if not consultant_name:
         return jsonify({"error": "Consultant is required."}), 400
+    # At minimum need the specification for QA Intelligence rules
+    if not paths.get("contract_spec") and not paths.get("specification"):
+        return jsonify({"error": "Contract Specification is required."}), 400
     pending_id = str(uuid.uuid4())[:12]
-    db.create_pending_review(pending_id, paths.get("contract_spec", "contract"))
+    db.create_pending_review(pending_id, paths.get("contract_spec", paths.get("specification", "contract")))
     threading.Thread(target=_run_stage3_background,
                      args=(pending_id, paths, deal_code, consultant_name, job_category), daemon=True).start()
     return jsonify({"review_id": pending_id, "status": "processing"}), 202
