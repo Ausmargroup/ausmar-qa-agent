@@ -361,6 +361,16 @@ label{font-size:10pt;font-weight:600;color:var(--g600);display:block;margin-bott
     <div class="prog-txt" id="s3ProgTxt">Uploading...</div>
   </div>
   <div id="s3Results"></div>
+  <!-- View Historical Result Panel -->
+  <div id="s3ViewPanel" style="display:none">
+    <div class="card" style="border:2px solid var(--acc);padding-bottom:0.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <h2 style="margin:0" id="s3ViewTitle">Viewing Submission</h2>
+        <button class="btn btn-sm btn-outline" onclick="closeS3View()">&#x2715; Close</button>
+      </div>
+      <div id="s3ViewContent"></div>
+    </div>
+  </div>
   <div class="card"><h2>Recent Contract QA Reviews</h2><div id="s3History"></div></div>
 </div>
 
@@ -1062,7 +1072,7 @@ function renderStage2(d){
 
 function _ownScope(){return (currentUser&&currentUser.permissions&&currentUser.permissions.history_own_only)?('&consultant='+encodeURIComponent(currentUser.full_name||'')):'';}
 async function loadStage2History(){
-  try{const rows=await fetch('/api/contract-reviews?stage=2'+_ownScope()).then(r=>r.json());$('s2History').innerHTML=histTable(rows);}catch(e){}
+  try{const rows=await fetch('/api/contract-reviews?stage=2'+_ownScope()).then(r=>r.json());$('s2History').innerHTML=histTable(rows,false);}catch(e){}
 }
 
 // ---- STAGE 3: UNIFIED CONTRACT QA ----
@@ -1138,7 +1148,7 @@ function renderStage3(d){
 }
 
 async function loadStage3History(){
-  try{const rows=await fetch('/api/contract-reviews?stage=3'+_ownScope()).then(r=>r.json());$('s3History').innerHTML=histTable(rows);}catch(e){}
+  try{const rows=await fetch('/api/contract-reviews?stage=3'+_ownScope()).then(r=>r.json());$('s3History').innerHTML=histTable(rows,true);}catch(e){}
 }
 
 // ---- Shared renderers ----
@@ -1182,13 +1192,85 @@ async function setIssue(id,status,btn){
     btn.closest('.iact').innerHTML=`<span style="font-size:0.78rem;font-weight:600">Marked: ${esc(status)}</span>`;
   }catch(e){btn.closest('.iact').innerHTML='<span style="font-size:0.75rem;color:var(--acc)">Error</span>';}
 }
-function histTable(rows){
+function histTable(rows,showView){
   if(!rows||!rows.length)return'<p style="font-size:0.85rem;color:var(--g500)">None yet.</p>';
-  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Type</th><th>Verdict</th><th>Date</th></tr></thead><tbody>';
+  const viewCol=showView!==false;
+  let h='<table class="tbl"><thead><tr><th>#</th><th>Deal</th><th>Consultant</th><th>Type</th><th>Verdict</th><th>Date</th>'+(viewCol?'<th></th>':'')+'</tr></thead><tbody>';
   rows.forEach(r=>{const v=(r.verdict||'').toUpperCase();let b='b-info';if(v.includes('PASS')||v.includes('READY'))b='b-pass';else if(v.includes('DO NOT')||v.includes('FAIL'))b='b-fail';else b='b-warn';
     const typ=r.display_type||(r.stage===2?'NHP':'Contract');
-    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(typ)}</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td></tr>`;});
+    const viewBtn=viewCol?`<td><button class="btn btn-sm btn-outline" onclick="viewS3Submission(${r.id},'${esc(r.deal_code||'-')}','${esc(r.stage===2?'stage2':'stage3')}')">View</button></td>`:'<td></td>';
+    h+=`<tr><td>${r.id}</td><td><strong>${esc(r.deal_code||'-')}</strong></td><td>${esc(r.consultant_name||'-')}</td><td>${esc(typ)}</td><td><span class="badge ${b}">${esc(r.verdict||'-')}</span></td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():'-'}</td>${viewBtn}</tr>`;});
   return h+'</tbody></table>';
+}
+
+async function viewS3Submission(id,dealCode,stageType){
+  const panel=$('s3ViewPanel');
+  const content=$('s3ViewContent');
+  const title=$('s3ViewTitle');
+  // Show panel, scroll to it
+  panel.style.display='block';
+  content.innerHTML='<p style="font-size:0.85rem;color:var(--g500)">Loading...</p>';
+  title.textContent=`Submission #${id} — ${dealCode}`;
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
+  try{
+    const d=await fetch(`/api/contract-reviews/${id}`).then(r=>r.json());
+    if(d.error){content.innerHTML=`<p style="color:var(--acc)">${esc(d.error)}</p>`;return;}
+    // Reconstruct the full result from stored data
+    const rp=d.result_payload||{};
+    // Determine what data we have
+    const qi=rp.qa_intelligence||null;
+    const nhp=rp.nhp_comparison||null;
+    const verdict=d.verdict||rp.verdict||'';
+    const verdictReason=d.verdict_reason||rp.verdict_reason||'';
+    let h=verdictBlock(verdict,verdictReason);
+    h+=`<div class="meta">${dealCode?`<span>Deal: <strong>${esc(dealCode)}</strong></span>`:''}<span>Consultant: <strong>${esc(d.consultant_name||'')}</strong></span><span>Date: ${d.created_at?new Date(d.created_at).toLocaleDateString():'-'}</span></div>`;
+    // QA Intelligence section
+    if(qi){
+      const score=qi.qa_score||0;
+      const scoreColor=score>=80?'var(--grn)':score>=50?'var(--ylw)':'var(--acc)';
+      h+=`<div class="card"><h2>QA Intelligence Score: ${score}%</h2><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${score}%;background:${scoreColor}"></div></div></div><div class="meta"><span style="color:var(--grn)">Passed: ${qi.passed||0}</span><span style="color:var(--acc)">Failed: ${qi.failed||0}</span><span style="color:var(--ylw)">Warnings: ${qi.warnings||0}</span><span>Total Rules: ${qi.total_rules||0}</span></div></div>`;
+      const findings=qi.findings||[];
+      if(findings.length){
+        const fails=findings.filter(f=>f.result==='FAIL');
+        const warns=findings.filter(f=>f.result==='WARNING');
+        const passes=findings.filter(f=>f.result==='PASS');
+        if(fails.length){h+=`<div class="card"><h2 style="color:var(--acc)">Failed Rules (${fails.length})</h2>`;fails.forEach(f=>{h+=findingCard(f);});h+=`</div>`;}
+        if(warns.length){h+=`<div class="card"><h2 style="color:var(--ylw)">Warnings (${warns.length})</h2>`;warns.forEach(f=>{h+=findingCard(f);});h+=`</div>`;}
+        if(passes.length){h+=`<details class="card"><summary style="cursor:pointer;font-weight:600">Passed Rules (${passes.length}) — click to expand</summary>`;passes.forEach(f=>{h+=findingCard(f);});h+=`</details>`;}
+      }
+    }
+    // NHP Comparison section
+    if(nhp){
+      const s=nhp.consultant_summary||{};
+      h+=`<div class="card"><h2>NHP Comparison</h2><div class="meta"><span>Verdict: <strong>${esc(nhp.verdict||'')}</strong></span><span>Pass 1: ${nhp.pass1_count||0}</span><span>Pass 2: ${nhp.pass2_count||0}</span></div>`;
+      if(s.recommendation){h+=`<p style="font-size:0.85rem;margin-top:0.5rem"><strong>Recommendation:</strong> ${esc(s.recommendation)}</p><div class="meta"><span class="sev sev-critical">Critical ${s.critical||0}</span><span class="sev sev-high">High ${s.high||0}</span><span class="sev sev-medium">Medium ${s.medium||0}</span><span class="sev sev-low">Low ${s.low||0}</span><span class="sev sev-observation">Obs ${s.observation||0}</span></div>`;}
+      h+=`</div>`;
+      h+=`<div class="hint">Pass 2 drawing findings are AI-assisted pointers — each one must be confirmed by a human reviewer on the actual drawing before action.</div>`;
+      // Use stored issue_rows for status buttons (they have live IDs)
+      const issues=d.issue_rows&&d.issue_rows.length?d.issue_rows:(nhp.issues||[]);
+      h+=issuesBySection(issues,id);
+    } else if(!qi){
+      // Old Stage 3 submission — use issue_rows directly
+      const issues=d.issue_rows||[];
+      if(issues.length){
+        h+=issuesBySection(issues,id);
+      } else {
+        h+=`<div class="card"><p style="font-size:0.85rem;color:var(--g500)">No detailed findings stored for this submission.</p></div>`;
+      }
+    }
+    if(!qi&&!nhp&&!(d.issue_rows&&d.issue_rows.length)){
+      h+=`<div class="card"><p style="font-size:0.85rem;color:var(--g500)">This submission predates the unified engine. No detailed findings are available.</p></div>`;
+    }
+    h+=`<button class="btn btn-outline" style="margin-top:0.5rem" onclick="closeS3View()">Close</button>`;
+    content.innerHTML=h;
+  }catch(e){
+    content.innerHTML=`<p style="color:var(--acc)">Failed to load submission. Please try again.</p>`;
+  }
+}
+
+function closeS3View(){
+  $('s3ViewPanel').style.display='none';
+  $('s3ViewContent').innerHTML='';
 }
 
 // ---- findingCard renderer (used by Stage 3 unified results) ----
