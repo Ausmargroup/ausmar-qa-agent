@@ -84,7 +84,7 @@ def health():
     return "ok", 200
 
 
-def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes="", deal_code_override=""):
+def _run_review_background(pending_id, filepath, filename, corrected_folder, consultant_name="", consultant_email="", notes="", deal_code_override="", submitted_by=""):
     """Background thread: runs the full QA review and updates status in DB."""
     try:
         db.update_pending_progress(pending_id, 5, "Extracting zip and checking structure...")
@@ -123,6 +123,7 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
             "corrected_zip_path": result.get("corrected_zip_path", ""),
             "consultant_name": final_consultant,
             "prelog_id": result.get("prelog_id"),
+            "submitted_by": submitted_by,
         }
         review_id = db.save_review(review_data)
 
@@ -166,6 +167,7 @@ def api_review():
     consultant_name = request.form.get("consultant_name", "").strip()
     consultant_email = request.form.get("consultant_email", "").strip()
     deal_code = request.form.get("deal_code", "").strip()
+    submitted_by = request.form.get("submitted_by", "").strip()
     if not consultant_name:
         return jsonify({"error": "Consultant is required."}), 400
     if not deal_code:
@@ -184,7 +186,7 @@ def api_review():
     # Launch background thread
     t = threading.Thread(
         target=_run_review_background,
-        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email, notes, deal_code),
+        args=(pending_id, filepath, file.filename, app.config["CORRECTED_FOLDER"], consultant_name, consultant_email, notes, deal_code, submitted_by),
         daemon=True,
     )
     t.start()
@@ -750,7 +752,7 @@ def _save_stage_uploads(prefix):
 
 
 # ---- Stage 2: NHP Review (async) ----
-def _run_nhp_background(pending_id, paths, deal_code, consultant_name):
+def _run_nhp_background(pending_id, paths, deal_code, consultant_name, submitted_by=""):
     try:
         result = nhp_engine.run_nhp_review(
             paths.get("nhp_changes"), paths.get("final_nhp"),
@@ -765,6 +767,7 @@ def _run_nhp_background(pending_id, paths, deal_code, consultant_name):
             "verdict_reason": result.get("verdict_reason", ""),
             "result_payload": result,
             "issues": result.get("issues", []),
+            "submitted_by": submitted_by,
         })
         result["contract_review_id"] = review_id
         db.complete_pending_review(pending_id, json.dumps(result, default=str), review_id)
@@ -788,17 +791,18 @@ def api_stage2_review():
         return jsonify({"error": "Both 'nhp_changes' and 'final_nhp' PDF files are required."}), 400
     deal_code = (request.form.get("deal_code") or "").strip()
     consultant_name = (request.form.get("consultant_name") or "").strip()
+    submitted_by = (request.form.get("submitted_by") or "").strip()
     if not consultant_name:
         return jsonify({"error": "Consultant is required."}), 400
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, paths.get("nhp_changes", "nhp"))
     threading.Thread(target=_run_nhp_background,
-                     args=(pending_id, paths, deal_code, consultant_name), daemon=True).start()
+                     args=(pending_id, paths, deal_code, consultant_name, submitted_by), daemon=True).start()
     return jsonify({"review_id": pending_id, "status": "processing"}), 202
 
 
 # ---- Stage 3: Unified Contract QA (NHP comparison + QA Intelligence rules) ----
-def _run_stage3_background(pending_id, paths, deal_code, consultant_name, job_category):
+def _run_stage3_background(pending_id, paths, deal_code, consultant_name, job_category, submitted_by=""):
     """Runs BOTH the existing NHP comparison engine AND the 18 Tier 1 QA Intelligence
     rules, then merges results into a single combined payload."""
     try:
@@ -927,6 +931,7 @@ def _run_stage3_background(pending_id, paths, deal_code, consultant_name, job_ca
             "verdict_reason": combined["verdict_reason"],
             "result_payload": combined,
             "issues": combined.get("issues", []),
+            "submitted_by": submitted_by,
         })
         combined["contract_review_id"] = review_id
         db.complete_pending_review(pending_id, json.dumps(combined, default=str), review_id)
@@ -949,6 +954,7 @@ def api_stage3_review():
     deal_code = (request.form.get("deal_code") or "").strip()
     consultant_name = (request.form.get("consultant_name") or "").strip()
     job_category = (request.form.get("job_category") or "").strip()
+    submitted_by = (request.form.get("submitted_by") or "").strip()
     if not consultant_name:
         return jsonify({"error": "Consultant is required."}), 400
     # At minimum need the specification for QA Intelligence rules
@@ -957,7 +963,7 @@ def api_stage3_review():
     pending_id = str(uuid.uuid4())[:12]
     db.create_pending_review(pending_id, paths.get("contract_spec", paths.get("specification", "contract")))
     threading.Thread(target=_run_stage3_background,
-                     args=(pending_id, paths, deal_code, consultant_name, job_category), daemon=True).start()
+                     args=(pending_id, paths, deal_code, consultant_name, job_category, submitted_by), daemon=True).start()
     return jsonify({"review_id": pending_id, "status": "processing"}), 202
 
 

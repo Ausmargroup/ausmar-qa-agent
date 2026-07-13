@@ -138,6 +138,12 @@ if _DATABASE_URL:
         except Exception:
             conn.rollback()
 
+        # Migrate: add submitted_by column to reviews if not exists
+        try:
+            cur.execute("ALTER TABLE reviews ADD COLUMN IF NOT EXISTS submitted_by TEXT DEFAULT ''")
+        except Exception:
+            conn.rollback()
+
         # Seed plans — ON CONFLICT DO NOTHING
         plans = [
             ("Clearwater 225",          12.3,  29.1,  225.95, 11.98,  0.0),
@@ -342,8 +348,8 @@ if _DATABASE_URL:
         cur = _exec(conn,
             """INSERT INTO reviews (deal_code, zip_name, deposit_type, verdict, verdict_reason,
                critical_issues, warnings, heath_note, consultant_email, check_results,
-               files_in_zip, corrections_applied, corrected_zip_path, consultant_name, prelog_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id""",
+               files_in_zip, corrections_applied, corrected_zip_path, consultant_name, prelog_id, submitted_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id""",
             (
                 data.get("deal_code", ""),
                 data.get("zip_name", ""),
@@ -360,6 +366,7 @@ if _DATABASE_URL:
                 data.get("corrected_zip_path", ""),
                 data.get("consultant_name", ""),
                 data.get("prelog_id"),
+                data.get("submitted_by", ""),
             ),
         )
         review_id = cur.fetchone()["id"]
@@ -694,6 +701,11 @@ else:
             conn.commit()
         except Exception:
             pass
+        try:
+            conn.execute("ALTER TABLE reviews ADD COLUMN submitted_by TEXT DEFAULT ''")
+            conn.commit()
+        except Exception:
+            pass
         conn.executemany(
             "INSERT OR IGNORE INTO plans (name, min_width, min_length, total_area, width_incl_eaves, house_width) VALUES (?,?,?,?,?,?)",
             [
@@ -772,15 +784,16 @@ else:
         cur = conn.execute(
             """INSERT INTO reviews (deal_code, zip_name, deposit_type, verdict, verdict_reason,
                critical_issues, warnings, heath_note, consultant_email, check_results,
-               files_in_zip, corrections_applied, corrected_zip_path, consultant_name, prelog_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               files_in_zip, corrections_applied, corrected_zip_path, consultant_name, prelog_id, submitted_by)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data.get("deal_code",""), data.get("zip_name",""), data.get("deposit_type","UNKNOWN"),
              data.get("verdict",""), data.get("verdict_reason",""),
              json.dumps(data.get("critical_issues",[])), json.dumps(data.get("warnings",[])),
              data.get("heath_note",""), data.get("consultant_email",""),
              json.dumps(data.get("check_results",{}), default=str),
              json.dumps(data.get("files_in_zip",[])), json.dumps(data.get("corrections_applied",[])),
-             data.get("corrected_zip_path",""), data.get("consultant_name",""), data.get("prelog_id")),
+             data.get("corrected_zip_path",""), data.get("consultant_name",""), data.get("prelog_id"),
+             data.get("submitted_by","")),
         )
         review_id = cur.lastrowid
         conn.commit(); conn.close()

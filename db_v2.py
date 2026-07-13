@@ -126,9 +126,29 @@ def init_v2():
         for s in statements:
             conn.execute(s)
         conn.commit()
+
+    # Non-destructive migrations: add new columns if they don't exist yet
+    _run_migrations(conn)
     conn.close()
 
     _seed_rules()
+
+
+def _run_migrations(conn):
+    """Add new columns to existing tables without breaking existing data."""
+    if _IS_PG:
+        cur = conn.cursor()
+        # submitted_by on contract_reviews
+        cur.execute("""
+            ALTER TABLE contract_reviews ADD COLUMN IF NOT EXISTS submitted_by TEXT DEFAULT ''
+        """)
+        conn.commit()
+    else:
+        # SQLite: check if column exists before adding
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(contract_reviews)").fetchall()]
+        if 'submitted_by' not in cols:
+            conn.execute("ALTER TABLE contract_reviews ADD COLUMN submitted_by TEXT DEFAULT ''")
+            conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -330,12 +350,13 @@ def save_contract_review(data):
     conn = db.get_db()
     cur = _exec(conn,
         """INSERT INTO contract_reviews
-           (deal_code, stage, consultant_name, job_category, status, verdict, verdict_reason, result_payload)
-           VALUES (?,?,?,?,?,?,?,?)""" + (" RETURNING id" if _IS_PG else ""),
+           (deal_code, stage, consultant_name, job_category, status, verdict, verdict_reason, result_payload, submitted_by)
+           VALUES (?,?,?,?,?,?,?,?,?)""" + (" RETURNING id" if _IS_PG else ""),
         (data.get("deal_code", ""), data.get("stage", 3), data.get("consultant_name", ""),
          data.get("job_category", ""), data.get("status", "completed"),
          data.get("verdict", ""), data.get("verdict_reason", ""),
-         json.dumps(data.get("result_payload", {}), default=str)))
+         json.dumps(data.get("result_payload", {}), default=str),
+         data.get("submitted_by", "")))
     review_id = cur.fetchone()["id"] if _IS_PG else cur.lastrowid
     conn.commit(); conn.close()
 
