@@ -973,14 +973,76 @@ async function delPlan(id){
 async function loadPrelogs(){
   const pls=await fetch('/api/prelogs').then(r=>r.json());
   if(!pls.length){$('prelogTable').innerHTML='<p style="font-size:0.85rem;color:var(--g500)">No pre-logged jobs yet.</p>';return}
-  let h='<table class="tbl"><thead><tr><th>Deal Code</th><th>Consultant</th><th>Deposit</th><th>Files</th><th>Status</th><th>Date</th></tr></thead><tbody>';
+  let h='<table class="tbl"><thead><tr><th>Deal Code</th><th>Consultant</th><th>Deposit</th><th>Files</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>';
   pls.forEach(p=>{
     const scls=p.status==='matched'?'b-pass':'b-info';
     const fcount=(p.files&&p.files.length)?p.files.length+' file'+(p.files.length>1?'s':''):'—';
-    h+=`<tr><td><strong>${esc(p.deal_code)}</strong></td><td>${esc(p.consultant_name||'-')}</td><td>${p.deposit_amount?'$'+p.deposit_amount.toLocaleString():'-'}</td><td style="font-size:0.8rem;color:var(--g500)">${fcount}</td><td><span class="badge ${scls}">${esc(p.status)}</span></td><td>${p.created_at?new Date(p.created_at).toLocaleDateString():'-'}</td></tr>`;
+    const updatedNote=p.updated_at&&p.updated_at!==p.created_at?` <span style="font-size:0.72rem;color:var(--g500)">(edited ${new Date(p.updated_at).toLocaleDateString()})</span>`:'';
+    h+=`<tr id="pl-row-${p.id}"><td><strong>${esc(p.deal_code)}</strong></td><td>${esc(p.consultant_name||'-')}</td><td>${p.deposit_amount?'$'+p.deposit_amount.toLocaleString():'-'}</td><td style="font-size:0.8rem;color:var(--g500)">${fcount}</td><td><span class="badge ${scls}">${esc(p.status)}</span>${updatedNote}</td><td>${p.created_at?new Date(p.created_at).toLocaleDateString():'-'}</td><td><button class="btn btn-sm btn-outline" onclick="editPrelog(${p.id})">Edit</button></td></tr>`;
+    // Inline edit row (hidden by default)
+    const consultantOpts=['Andrew','Caitlyn','Heath','Ian','Johan','Nadia','Nik','Rod','Telford'].map(c=>`<option value="${c}"${(p.consultant_name||'')==c?' selected':''}>${c}</option>`).join('');
+    const filesHtml=(p.files&&p.files.length)?p.files.map(f=>`<span class="pl-file-chip" style="display:inline-flex;align-items:center;gap:0.25rem;background:var(--g100);border-radius:4px;padding:0.15rem 0.4rem;margin:0.15rem;font-size:0.78rem">${esc(f)}<button type="button" onclick="removePLFile(${p.id},'${esc(f).replace(/'/g,"\\'")}')"
+        style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:0.85rem;line-height:1;padding:0 0.1rem">&times;</button></span>`).join(''):'<span style="font-size:0.78rem;color:var(--g500)">No files</span>';
+    h+=`<tr id="pl-edit-${p.id}" style="display:none"><td colspan="7" style="padding:0.75rem 0.5rem;background:var(--g50)">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.5rem">
+        <div><label style="font-size:0.78rem;font-weight:600">Deal Code</label><input id="ple-code-${p.id}" value="${esc(p.deal_code)}" style="width:100%"></div>
+        <div><label style="font-size:0.78rem;font-weight:600">Consultant</label><select id="ple-con-${p.id}" style="width:100%"><option value="">Select...</option>${consultantOpts}</select></div>
+        <div><label style="font-size:0.78rem;font-weight:600">Deposit Amount</label><select id="ple-amt-${p.id}" style="width:100%"><option value="0">Select...</option><option value="2500"${p.deposit_amount==2500?' selected':''}>$2,500 (NHP)</option><option value="4000"${p.deposit_amount==4000?' selected':''}>$4,000 (STC)</option></select></div>
+      </div>
+      <div style="margin-bottom:0.5rem"><label style="font-size:0.78rem;font-weight:600">Current Files</label><div id="ple-files-${p.id}" style="margin-top:0.25rem">${filesHtml}</div></div>
+      <div style="margin-bottom:0.5rem"><label style="font-size:0.78rem;font-weight:600">Add More Files</label><input type="file" id="ple-newfiles-${p.id}" multiple accept="*/*" style="display:block;margin-top:0.25rem"></div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-primary" onclick="savePrelog(${p.id})">Save</button>
+        <button class="btn btn-outline" onclick="cancelEditPrelog(${p.id})">Cancel</button>
+      </div>
+    </td></tr>`;
   });
   h+='</tbody></table>';
   $('prelogTable').innerHTML=h;
+}
+
+function editPrelog(id){
+  const editRow=$('pl-edit-'+id);
+  if(!editRow)return;
+  // Hide any other open edit rows first
+  document.querySelectorAll('[id^="pl-edit-"]').forEach(r=>{if(r.id!=='pl-edit-'+id)r.style.display='none';});
+  editRow.style.display=editRow.style.display==='none'?'table-row':'none';
+}
+
+function cancelEditPrelog(id){
+  const r=$('pl-edit-'+id);if(r)r.style.display='none';
+}
+
+function removePLFile(id,fname){
+  // Mark file for removal by adding to a hidden list on the edit row
+  const key='pl-remove-'+id;
+  if(!window._plRemove)window._plRemove={};
+  if(!window._plRemove[id])window._plRemove[id]=[];
+  if(!window._plRemove[id].includes(fname))window._plRemove[id].push(fname);
+  // Grey out the chip visually
+  const chips=document.querySelectorAll(`#ple-files-${id} .pl-file-chip`);
+  chips.forEach(c=>{if(c.textContent.trim().startsWith(fname))c.style.opacity='0.3';});
+}
+
+async function savePrelog(id){
+  const fd=new FormData();
+  const code=$('ple-code-'+id)?.value.trim();if(code)fd.append('deal_code',code);
+  const con=$('ple-con-'+id)?.value;if(con)fd.append('consultant_name',con);
+  const amt=$('ple-amt-'+id)?.value;if(amt)fd.append('deposit_amount',amt);
+  // Files to remove
+  const toRemove=(window._plRemove&&window._plRemove[id])||[];
+  fd.append('remove_files',JSON.stringify(toRemove));
+  // New files to add
+  const newFiles=$('ple-newfiles-'+id)?.files||[];
+  for(let i=0;i<newFiles.length;i++)fd.append('new_file_'+i,newFiles[i]);
+  const r=await fetch('/api/prelogs/'+id,{method:'PATCH',body:fd});
+  if(r.ok){
+    if(window._plRemove)delete window._plRemove[id];
+    await loadPrelogs();
+  }else{
+    const d=await r.json().catch(()=>({}));
+    alert('Save failed: '+(d.error||'Unknown error'));
+  }
 }
 
 async function submitPrelog(){

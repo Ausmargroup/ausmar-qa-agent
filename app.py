@@ -671,14 +671,87 @@ def api_prelog_detail(prelog_id):
 
 @app.route("/api/prelogs/<int:prelog_id>", methods=["PATCH"])
 def api_update_prelog(prelog_id):
+    """Full edit: supports multipart/form-data (with file uploads) or JSON.
+    - Editable fields: deal_code, consultant_name, deposit_amount, notes
+    - remove_files: JSON array of filename strings to remove from the record
+    - New file uploads are appended to existing files list
+    """
     _ensure_db()
-    data = request.get_json() or {}
+    prelog = db.get_prelog(prelog_id)
+    if not prelog:
+        return jsonify({"error": "Pre-log not found"}), 404
+
+    # Accept both multipart/form-data (file uploads) and JSON
+    if request.content_type and "multipart" in request.content_type:
+        data = request.form.to_dict()
+    else:
+        data = request.get_json() or {}
+
+    # Build scalar field updates
     allowed = ["consultant_name", "notes", "deposit_amount", "deal_code"]
-    updates = {k: v for k, v in data.items() if k in allowed}
-    if not updates:
-        return jsonify({"error": "No valid fields to update"}), 400
+    updates = {k: v for k, v in data.items() if k in allowed and v is not None}
+    if "deposit_amount" in updates:
+        try:
+            updates["deposit_amount"] = float(updates["deposit_amount"])
+        except (ValueError, TypeError):
+            updates["deposit_amount"] = 0.0
+
+    # Handle file removal — remove_files is a JSON array of filenames to drop
+    remove_files_raw = data.get("remove_files", "[]")
+    try:
+        remove_files = json.loads(remove_files_raw) if isinstance(remove_files_raw, str) else (remove_files_raw or [])
+    except Exception:
+        remove_files = []
+
+    existing_files = list(prelog.get("files") or [])
+    existing_paths = list(prelog.get("file_paths") or [])
+
+    if remove_files:
+        new_files = []
+        new_paths = []
+        for fname, fpath in zip(existing_files, existing_paths):
+            if fname not in remove_files:
+                new_files.append(fname)
+                new_paths.append(fpath)
+            else:
+                # Delete the physical file if it exists
+                try:
+                    if fpath and os.path.exists(fpath):
+                        os.remove(fpath)
+                except Exception:
+                    pass
+        existing_files = new_files
+        existing_paths = new_paths
+
+    # Handle new file uploads — append to existing
+    prelog_folder = app.config["PRELOG_FOLDER"]
+    os.makedirs(prelog_folder, exist_ok=True)
+    deal_code_for_prefix = updates.get("deal_code") or prelog.get("deal_code") or str(prelog_id)
+    if request.files:
+        all_uploads = []
+        for key in request.files.keys():
+            all_uploads.extend(request.files.getlist(key))
+        for f in all_uploads:
+            if f.filename:
+                try:
+                    safe_name = os.path.basename(f.filename).replace(" ", "_")
+                    save_path = os.path.join(prelog_folder, f"{deal_code_for_prefix}_{safe_name}")
+                    f.save(save_path)
+                    existing_files.append(safe_name)
+                    existing_paths.append(save_path)
+                except Exception as fe:
+                    import sys
+                    print(f"[WARN] Could not save prelog file {f.filename}: {fe}", file=sys.stderr)
+                    existing_files.append(os.path.basename(f.filename))
+
+    # Merge file lists into updates
+    updates["files"] = json.dumps(existing_files)
+    updates["file_paths"] = json.dumps(existing_paths)
+
+    # Write to DB
     conn = db.get_db()
-    if os.environ.get("DATABASE_URL"):
+    is_pg = bool(os.environ.get("DATABASE_URL"))
+    if is_pg:
         ph = "%s"
         ts = "NOW()"
         sets = ", ".join(f"{k}={ph}" for k in updates)
