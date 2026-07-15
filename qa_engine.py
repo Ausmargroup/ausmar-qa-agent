@@ -1588,8 +1588,9 @@ def rename_classified_files(extract_dir: str, file_map: dict, classifications: d
 # ---------------------------------------------------------------------------
 def check_geosite(file_map: dict, land_registered: bool | None = None) -> dict:
     """
-    land_registered: True = land registered (full siting plan required).
-                     False/None = unregistered or unknown (lot/locality plan is acceptable).
+    GeoSite is REQUIRED on EVERY job regardless of land registration status.
+    The land_registered parameter is retained for compatibility but no longer
+    changes the validation requirements.
     """
     if "geosite" not in file_map:
         return {
@@ -1710,45 +1711,26 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         issues = []
         warnings = []
 
-        # Context-aware: only require full siting plan if land IS registered.
-        # If land is NOT registered (or unknown/None), a lot/locality plan is acceptable.
-        require_full_siting = (land_registered is True)
+        # GeoSite is REQUIRED on EVERY job — no conditional acceptance based on land registration.
+        # Updated per AUSMAR policy: full GeoSite siting plan is mandatory regardless of registration status.
 
         if analysis.get("is_geosite_tool") is False:
-            if require_full_siting:
-                warnings.append(
-                    "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
-                    "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
-                )
-            else:
-                warnings.append(
-                    "Document appears to be a lot/locality plan — acceptable as land is not yet registered. "
-                    "Once land registers, a full GeoSite siting plan will be required."
-                )
+            warnings.append(
+                "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
+                "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
+            )
         if analysis.get("is_combined_with_contours") is True:
             warnings.append(
                 "GeoSite appears combined with contour data — Heath requires these to be separate documents. "
                 "Contours overlaid on GeoSite make it unreadable (real issue from S26TLS review)."
             )
         if analysis.get("house_sited_at_scale") is False:
-            if require_full_siting:
-                issues.append("House not sited at scale on the lot — cannot verify fit")
-            else:
-                warnings.append(
-                    "House not yet sited on lot plan — acceptable as land is not yet registered. "
-                    "Full GeoSite siting required once land registers."
-                )
+            issues.append("House not sited at scale on the lot — cannot verify fit. GeoSite is required on every job.")
         if analysis.get("setback_dimensions_shown") is False:
-            if require_full_siting:
-                issues.append(
-                    "Setback dimensions not shown on GeoSite — MUST have all setbacks "
-                    "(front, rear, left side, right side) for drafting team"
-                )
-            else:
-                warnings.append(
-                    "No setback dimensions on lot plan — acceptable as land is not yet registered. "
-                    "Setbacks required on GeoSite once land registers."
-                )
+            issues.append(
+                "Setback dimensions not shown on GeoSite — MUST have all setbacks "
+                "(front, rear, left side, right side) for drafting team. GeoSite is required on every job."
+            )
         if analysis.get("text_readable") is False:
             warnings.append("Text on GeoSite is overlapping or hard to read — may cause issues for drafting")
         if analysis.get("customer_signatures_present") is False:

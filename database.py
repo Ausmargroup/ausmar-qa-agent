@@ -227,6 +227,20 @@ if _DATABASE_URL:
             ("Tampa Bay 200 Palm Valley Streetscape", 12.5, 24.6, 199.5, 11.5, 11.5),
             ("Tampa Bay 200 Traditional Streetscape", 12.5, 27.2, 200.4, 11.1, 11.1),
             ("Tampa Bay 174 Traditional Streetscape", 12.5, 19.2, 173.4, 11.1, 11.1),
+            # Hillcrest Series (First Series) — added 16/07/2026
+            # Facades: Traditional, Coastal, Hamptons, Modern | Min lot width: 10m+
+            ("Hillcrest 150 Traditional",  10.0, 0.0, 150.0, 0.0, 0.0),
+            ("Hillcrest 150 Coastal",      10.0, 0.0, 150.0, 0.0, 0.0),
+            ("Hillcrest 150 Hamptons",     10.0, 0.0, 150.0, 0.0, 0.0),
+            ("Hillcrest 150 Modern",       10.0, 0.0, 150.0, 0.0, 0.0),
+            ("Hillcrest 168 Traditional",  10.0, 0.0, 168.0, 0.0, 0.0),
+            ("Hillcrest 168 Coastal",      10.0, 0.0, 168.0, 0.0, 0.0),
+            ("Hillcrest 168 Hamptons",     10.0, 0.0, 168.0, 0.0, 0.0),
+            ("Hillcrest 168 Modern",       10.0, 0.0, 168.0, 0.0, 0.0),
+            ("Hillcrest 180 Traditional",  10.0, 0.0, 180.0, 0.0, 0.0),
+            ("Hillcrest 180 Coastal",      10.0, 0.0, 180.0, 0.0, 0.0),
+            ("Hillcrest 180 Hamptons",     10.0, 0.0, 180.0, 0.0, 0.0),
+            ("Hillcrest 180 Modern",       10.0, 0.0, 180.0, 0.0, 0.0),
         ]
         for row in plans:
             cur.execute(
@@ -714,6 +728,19 @@ else:
                 ("Narrabeen", 10.0, 25.0, 212.33, 0.0, 9.24),
                 ("Malabar 153 Traditional", 10.0, 25.0, 153.0, 10.5, 10.0),
                 ("Tampa Bay 200", 12.5, 24.9, 200.6, 11.5, 11.5),
+                # Hillcrest Series (First Series) — added 16/07/2026
+                ("Hillcrest 150 Traditional",  10.0, 0.0, 150.0, 0.0, 0.0),
+                ("Hillcrest 150 Coastal",      10.0, 0.0, 150.0, 0.0, 0.0),
+                ("Hillcrest 150 Hamptons",     10.0, 0.0, 150.0, 0.0, 0.0),
+                ("Hillcrest 150 Modern",       10.0, 0.0, 150.0, 0.0, 0.0),
+                ("Hillcrest 168 Traditional",  10.0, 0.0, 168.0, 0.0, 0.0),
+                ("Hillcrest 168 Coastal",      10.0, 0.0, 168.0, 0.0, 0.0),
+                ("Hillcrest 168 Hamptons",     10.0, 0.0, 168.0, 0.0, 0.0),
+                ("Hillcrest 168 Modern",       10.0, 0.0, 168.0, 0.0, 0.0),
+                ("Hillcrest 180 Traditional",  10.0, 0.0, 180.0, 0.0, 0.0),
+                ("Hillcrest 180 Coastal",      10.0, 0.0, 180.0, 0.0, 0.0),
+                ("Hillcrest 180 Hamptons",     10.0, 0.0, 180.0, 0.0, 0.0),
+                ("Hillcrest 180 Modern",       10.0, 0.0, 180.0, 0.0, 0.0),
             ],
         )
         conn.executemany(
