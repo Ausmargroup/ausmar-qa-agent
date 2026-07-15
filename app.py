@@ -150,7 +150,14 @@ def _run_review_background(pending_id, filepath, filename, corrected_folder, con
 @app.route("/")
 def index():
     _ensure_db()
-    return render_template("index.html")
+    from flask import make_response
+    resp = make_response(render_template("index.html"))
+    # Prevent browsers from caching the HTML page so users always get the
+    # latest JS (including submitted_by and other new features) after deploys.
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 # ---- Review API (async) ----
