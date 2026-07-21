@@ -53,18 +53,74 @@ Return ONLY valid JSON in this exact format:
 # ---------------------------------------------------------------------------
 RULE_PROMPTS = {
     "QAR-001": """RULE: Specification Completeness Check
-Check that ALL specification sections have meaningful content (not blank/empty).
+Check that the specification document is complete and all applicable sections have meaningful content.
 
 PARAMETERS: {parameters}
 
 DOCUMENT TEXT (Specification):
 {spec_text}
 
-Instructions:
-- Identify each numbered Item section in the specification
-- Check if each section has meaningful content (more than {min_content_length} characters of actual specification text)
-- Flag any section that is empty, contains only a heading, or has placeholder text
-- Return PASS if all required sections have content, FAIL if any are empty, WARNING if content seems minimal""",
+Instructions — follow ALL steps in order:
+
+STEP 1 — EXTRACT THE ACTUAL INDEX:
+The specification contains an index/table of contents near the top listing numbered items (e.g. "Item 1 Preliminaries", "Item 7 Facade", "Item 14 Electrical", etc.).
+You MUST read this actual index to determine what item numbers map to which sections for THIS specific job.
+Do NOT assume fixed item numbering — every job's spec may have different item-to-section mappings.
+List the actual item numbers and their section names as you find them in the index.
+
+STEP 2 — DETERMINE BUILD TYPE:
+Read Item 1 (Preliminaries) or the header area to determine if this is a:
+- Lowset / single storey home
+- Highset home
+- Double storey / two storey home
+If the build type is lowset or single storey, a Staircase section is NOT APPLICABLE — do not flag it as missing.
+Only flag staircase content as missing for highset or double storey builds.
+
+STEP 3 — CHECK EACH SECTION FOR MEANINGFUL CONTENT:
+For each item in the actual index, check if the section body contains meaningful specification text (more than {min_content_length} characters of actual content, not just the heading).
+Flag a section as empty ONLY if the section header exists but the body is completely blank or contains only placeholder text like "TBC" or "N/A" with no supporting detail.
+
+STEP 4 — LANDSCAPING EXCLUSION:
+Landscaping is NOT included in AUSMAR specifications — it appears only in the exclusions section.
+Do NOT flag missing landscaping content as an issue or warning. This is expected and correct.
+
+STEP 5 — TRUNCATION / DOCUMENT COMPLETENESS CHECK:
+Read to the end of the document. Check whether the Exclusions section and General Conditions section are present and appear complete.
+Flag as an issue if:
+- The document ends abruptly mid-sentence or mid-section
+- The Exclusions section is missing entirely or ends without the standard closing clauses
+- The General Conditions section is missing or appears cut off
+- There is evidence the PDF was truncated (e.g. last sentence is incomplete)
+If the document ends cleanly with complete sections, do not flag this.
+
+STEP 6 — BAL / ACOUSTIC / ENERGY COMPLIANCE:
+Only flag BAL, Acoustic, or Energy compliance content as missing IF Item 1 (Preliminaries) explicitly mentions a BAL rating, acoustic requirement, or energy rating that would require a corresponding detail section.
+If Item 1 does not reference BAL or acoustic requirements, these sections are NOT applicable to this job — do not flag them as missing.
+
+STEP 7 — PC/PS ALLOWANCES:
+Do NOT flag "no PC/PS allowances" as missing content. PS allowances for slab and piers are valid inclusions.
+Only flag a PC/PS section if the section header exists in the index but the section body is completely empty (no dollar amounts, no item descriptions, nothing at all).
+
+Return your findings as JSON:
+{{
+  "result": "PASS" | "FAIL" | "WARNING",
+  "confidence": 0.0-1.0,
+  "build_type": "lowset" | "highset" | "double storey" | "unknown",
+  "actual_index": {{"Item 1": "Preliminaries", "Item 2": "..."}},
+  "empty_sections": ["list of section names that are empty/missing content"],
+  "truncation_detected": true | false,
+  "truncation_detail": "description of where/how truncated, or null",
+  "bal_acoustic_applicable": true | false,
+  "evidence_found": "summary of what was checked and found",
+  "evidence_expected": "all sections should have meaningful content",
+  "documents_affected": "Contract Specification",
+  "corrective_action": "specific actions needed, or 'None — all sections complete'",
+  "reasoning": "brief explanation of verdict"
+}}
+
+Return PASS if all applicable sections have content and document appears complete.
+Return FAIL if any applicable section is empty OR if document appears truncated.
+Return WARNING if content is minimal but present, or if build type is ambiguous.""",
 
     "QAR-002": """RULE: Floor Covering Quantity Reconciliation
 Check that floor covering m² quantities in the specification match the plan areas.
