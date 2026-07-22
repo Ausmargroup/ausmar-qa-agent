@@ -189,8 +189,8 @@ SEED_RULES = [
     ("P2-LED-009", "Electrical", "LED positions must align with signed electrical intent and practical room layout.", "Medium", "Stage 3"),
 
     # --- High-error focus areas flagged by AUSMAR (apply to both Stage 3 passes) ---
-    ("AUS-FACADE-01", "External", "Item 7 Facade: confirm chosen facade exists for the design and any non-standard facade upgrade is listed in spec and priced.", "High", "Stage 3"),
-    ("AUS-WINDOW-01", "Drawings/Elevations", "Item 8 Window modifications: every window add/delete/resize on red pen must appear in plan, elevation, schedule, and pricing.", "High", "Stage 3"),
+    ("AUS-FACADE-01", "External", "7.0 Facade and Roof: confirm chosen facade exists for the design and any non-standard facade upgrade is listed in spec and priced.", "High", "Stage 3"),
+    ("AUS-WINDOW-01", "Drawings/Elevations", "8.0 Doors and Windows: every window add/delete/resize on red pen must appear in plan, elevation, schedule, and pricing.", "High", "Stage 3"),
     ("AUS-SQM-01", "Pricing", "All square-metre quantities (tiling, vinyl, carpet, concrete, render) must reconcile between drawings, spec, and pricing.", "High", "Stage 3"),
     ("AUS-ASPERPLAN-01", "Specification", "'As per plan' items must be verified against the drawing; flag where elaboration is needed (e.g. floating shelf thickness not specified).", "Medium", "Stage 3"),
 ]

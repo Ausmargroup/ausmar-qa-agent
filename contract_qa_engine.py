@@ -35,17 +35,39 @@ DRAWING_SECTIONS = [
     "Electrical", "Floor coverings", "External Concrete", "Landscaping", "Details",
 ]
 
-# Contract specification item sections (Pass 1 itemisation). Derived from the
-# AUSMAR contract spec structure; admins can extend rules per section via the UI.
+# Contract specification item sections (Pass 1 itemisation).
+# Updated 23/07/2026 to match the current AUSMAR NHP/Spec index structure.
+# Old index (Items 3-26) was completely remapped — see ausmar_spec_index.md for full diff.
 SPEC_SECTIONS = [
-    "Item 1 Preliminaries", "Item 2 Site Works", "Item 3 Concrete", "Item 4 Brickwork",
-    "Item 5 Framing/Trusses", "Item 6 Roofing", "Item 7 Facade", "Item 8 Windows & Doors",
-    "Item 9 Insulation", "Item 10 Plastering", "Item 11 Wet Area / Waterproofing",
-    "Item 12 Tiling", "Item 13 Joinery/Cabinetry", "Item 14 Benchtops", "Item 15 Painting",
-    "Item 16 Electrical", "Item 17 Plumbing", "Item 18 Appliances", "Item 19 Floor Coverings",
-    "Item 20 Fixtures & Fittings", "Item 21 External Works", "Item 22 Landscaping",
-    "Item 23 Driveway/Paths", "Item 24 PC/PS Allowances", "Item 25 Energy/BAL/Acoustic",
-    "Item 26 Covenant/Developer", "Pricing Total", "Metadata",
+    "1.0 Preliminaries",
+    "2.0 Site Works",
+    "3.0 Slab",
+    "4.0 Plumbing",
+    "5.0 Electrical",
+    "6.0 Framing",
+    "7.0 Facade and Roof",
+    "8.0 Doors and Windows",
+    "9.0 General Internals",
+    "9.2 Other Cabinetry",
+    "10.0 Staircase",
+    "11.0 Kitchen",
+    "12.0 Bathroom",
+    "13.0 Ensuite",
+    "14.0 Ensuite #2",
+    "15.0 Ensuite #3",
+    "16.0 Powder Room",
+    "17.0 Powder Room #2",
+    "18.0 WC",
+    "19.0 Laundry",
+    "20.0 Floor Coverings",
+    "21.0 Home Accessories",
+    "22.0 External Works",
+    "23.0 Painting",
+    "24.0 Exclusions",
+    "24.2 General Conditions and Notes",
+    "24.3 Additional Conditions and Notes",
+    "Pricing Total",
+    "Metadata",
 ]
 
 VALID_SEVERITIES = ["Critical", "High", "Medium", "Low", "Observation"]
@@ -81,7 +103,7 @@ CRITICAL ACCURACY RULES:
 For each issue return these fields exactly:
   issue_ref (leave ""), severity (Critical|High|Medium|Low|Observation),
   category (Pricing|Specification|Drawings/Elevations|Electrical|Wet Areas|Joinery|External),
-  section (e.g. "Item 7 Facade" or "Pricing Total" or "Metadata"),
+  section (e.g. "7.0 Facade and Roof" or "4.0 Plumbing" or "Pricing Total" or "Metadata"),
   signed_source (what was signed, with reference),
   contract_output (what the contract says, with reference),
   discrepancy (clear statement of the problem),

@@ -180,16 +180,30 @@ TIER1_RULES = [
         "automation_type": "Rule-based",
         "parameters": json.dumps({
             "required_sections": [
-                "Item 1 Preliminaries", "Item 2 Site Works", "Item 3 Concrete",
-                "Item 4 Brickwork", "Item 5 Framing/Trusses", "Item 6 Roofing",
-                "Item 7 Facade", "Item 8 Windows & Doors", "Item 9 Insulation",
-                "Item 10 Plastering", "Item 11 Wet Area / Waterproofing",
-                "Item 12 Tiling", "Item 13 Joinery/Cabinetry", "Item 14 Benchtops",
-                "Item 15 Painting", "Item 16 Electrical", "Item 17 Plumbing",
-                "Item 18 Appliances", "Item 19 Floor Coverings",
-                "Item 20 Fixtures & Fittings", "Item 21 External Works",
-                "Item 22 Landscaping", "Item 23 Driveway/Paths",
-                "Item 24 PC/PS Allowances", "Item 25 Energy/BAL/Acoustic"
+                # Current AUSMAR spec index — updated 23/07/2026 from NHP.pdf
+                "1.0 Preliminaries",
+                "2.0 Site Works",
+                "3.0 Slab",
+                "4.0 Plumbing",
+                "5.0 Electrical",
+                "6.0 Framing",
+                "7.0 Facade and Roof",
+                "8.0 Doors and Windows",
+                "9.0 General Internals",
+                "11.0 Kitchen",
+                "12.0 Bathroom",
+                "13.0 Ensuite",
+                "16.0 Powder Room",
+                "18.0 WC",
+                "19.0 Laundry",
+                "20.0 Floor Coverings",
+                "21.0 Home Accessories",
+                "22.0 External Works",
+                "23.0 Painting",
+                "24.0 Exclusions",
+                "24.2 General Conditions and Notes"
+                # Note: 9.2 Other Cabinetry, 10.0 Staircase, 14.0 Ensuite #2, 15.0 Ensuite #3,
+                # 17.0 Powder Room #2, 24.3 Additional Conditions are optional/build-type-dependent
             ],
             "min_content_length": 20
         }),
@@ -227,7 +241,7 @@ TIER1_RULES = [
     {
         "rule_ref": "QAR-004",
         "category": "Plumbing",
-        "description": "Yard gully quantity reconciliation — minimum 4 yard gullies required, check spec Item 4",
+        "description": "Yard gully quantity reconciliation — minimum 4 yard gullies required, check spec 4.0 Plumbing",
         "severity": "High",
         "domain": "Contract",
         "trigger_condition": "Yard gully count in spec differs from plan or NHP pricing, or is below minimum",
@@ -236,7 +250,7 @@ TIER1_RULES = [
         "automation_type": "Rule-based",
         "parameters": json.dumps({
             "minimum_yard_gullies": 4,
-            "spec_section": "Item 4 Brickwork"
+            "spec_section": "4.0 Plumbing"
         }),
     },
     {

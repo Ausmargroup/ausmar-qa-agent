@@ -63,7 +63,7 @@ DOCUMENT TEXT (Specification):
 Instructions — follow ALL steps in order:
 
 STEP 1 — EXTRACT THE ACTUAL INDEX:
-The specification contains an index/table of contents near the top listing numbered items (e.g. "Item 1 Preliminaries", "Item 7 Facade", "Item 14 Electrical", etc.).
+The specification contains an index/table of contents near the top listing numbered items (e.g. "1.0 PRELIMINARIES", "7.0 FACADE AND ROOF", "11.0 KITCHEN", "23.0 PAINTING", etc.).
 You MUST read this actual index to determine what item numbers map to which sections for THIS specific job.
 Do NOT assume fixed item numbering — every job's spec may have different item-to-section mappings.
 List the actual item numbers and their section names as you find them in the index.
@@ -106,7 +106,7 @@ Return your findings as JSON:
   "result": "PASS" | "FAIL" | "WARNING",
   "confidence": 0.0-1.0,
   "build_type": "lowset" | "highset" | "double storey" | "unknown",
-  "actual_index": {{"Item 1": "Preliminaries", "Item 2": "..."}},
+  "actual_index": {{"1.0": "PRELIMINARIES", "2.0": "SITE WORKS", "...": "..."}},
   "empty_sections": ["list of section names that are empty/missing content"],
   "truncation_detected": true | false,
   "truncation_detail": "description of where/how truncated, or null",
@@ -174,7 +174,7 @@ NHP PRICING TEXT:
 {nhp_text}
 
 Instructions:
-- Find yard gully quantity in the specification (typically in Item 4 or plumbing section)
+- Find yard gully quantity in the specification (look in section 4.0 Plumbing)
 - Find yard gully quantity in NHP pricing
 - Verify minimum of {minimum_yard_gullies} yard gullies
 - Return PASS if ≥ minimum and consistent, FAIL if below minimum or inconsistent, WARNING if not found""",
@@ -359,7 +359,7 @@ WORKING DRAWINGS TEXT:
 {plan_text}
 
 Instructions:
-- Extract roof material/type from specification (Item 6 Roofing)
+- Extract roof material/type from specification (look in section 7.0 Facade and Roof — roofing is combined with facade in the current index)
 - Extract roof material references from elevation drawings
 - Check consistency (type and profile)
 - Return PASS if consistent, FAIL if discrepancy, WARNING if not clearly stated""",
@@ -376,7 +376,7 @@ WORKING DRAWINGS TEXT:
 {plan_text}
 
 Instructions:
-- Extract cladding material from specification (Item 7 Facade)
+- Extract cladding material from specification (look in section 7.0 Facade and Roof)
 - Extract cladding tags/notes from elevation drawings
 - Check consistency
 - Return PASS if consistent, FAIL if discrepancy, WARNING if not clearly stated""",
