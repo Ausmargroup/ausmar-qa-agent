@@ -157,6 +157,7 @@ DOC_TYPES = {
     "sales_accept": "Sales Accept Doc",
     "soil_report": "Soil Report",
     "covenant_doc": "Covenant",
+    "decision_notice": "Decision Notice",
 }
 
 # Core required documents (missing = issue)
@@ -869,7 +870,14 @@ CONTENT_FINGERPRINTS = [
     # PSE Checklist — requires specific PSE checklist language, not generic checklist words
     ("pse_checklist", {
         "keywords": ["pse checklist", "document checklist", "1.0 pse document naming",
-                      "pse documents list", "document list", "document naming"],
+                      "pse documents list", "document list", "document naming",
+                      "pse accept", "pse acceptance"],
+        "min_matches": 1,
+        "extensions": [".pdf"],
+    }),
+    # Decision Notice
+    ("decision_notice", {
+        "keywords": ["decision notice", "planning approval", "compliance document", "decision notice package"],
         "min_matches": 1,
         "extensions": [".pdf"],
     }),
@@ -1034,11 +1042,12 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Run filename hints first for .docx
         for patterns, doc_type in [
             (["intention to purchase", "itp"], "itp"),
-            (["pse checklist", "checklist"], "pse_checklist"),
+            (["pse checklist", "checklist", "pse accept", "pse acceptance"], "pse_checklist"),
             (["provisional sales estimate", "pse"], "pse_doc"),
             (["disclosure plan", "survey plan"], "disclosure_plan"),
             (["promo", "acknowledgement", "acknowledgment"], "promo_ack"),
             (["red pen", "markup", "mark up"], "red_pen"),
+            (["decision notice"], "decision_notice"),
         ]:
             if any(p in fn_lower for p in patterns):
                 return doc_type, 0.75
@@ -1080,8 +1089,9 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # (it lists them all). If the filename says "checklist", trust that.
         # Also catch "Site Visit Checklist" which is a different form.
         _checklist_text_signals = ["pse checklist", "document checklist", "1.0 pse document naming",
-                                    "pse documents list", "document list", "document naming"]
-        if "checklist" in fn_lower and any(s in text_lower for s in _checklist_text_signals):
+                                    "pse documents list", "document list", "document naming",
+                                    "pse accept", "pse acceptance"]
+        if ("checklist" in fn_lower or "accept" in fn_lower) and any(s in text_lower for s in _checklist_text_signals):
             return "pse_checklist", 1.0
         # Site Visit Checklist — trust the filename
         if "site visit" in fn_lower and "checklist" in fn_lower:
@@ -1184,7 +1194,9 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Covenant Guidelines
         (["design guidelines", "covenant guidelines", "covenant doc"], "covenant_guidelines"),
         # PSE Checklist
-        (["pse checklist", "document checklist", "pse documents list"], "pse_checklist"),
+        (["pse checklist", "document checklist", "pse documents list", "pse accept", "pse acceptance"], "pse_checklist"),
+        # Decision Notice
+        (["decision notice"], "decision_notice"),
         # Discount Approval
         (["discount approval", "discount form"], "discount_approval"),
         # Owner Supplied
@@ -1201,6 +1213,12 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     fn_stem = Path(file_info["name"]).stem.lower().strip()
     if fn_stem == "pse" and ext == ".pdf":
         return "pse_doc", 0.75
+
+    # --- Scanner datestamp pattern recognition ---
+    # Scanner-generated filenames like "doc20260723143924.pdf" (doc + 14-digit datestamp)
+    # are likely scanned/signed documents (signed forms or red pen markups).
+    if re.match(r'^doc\d{14}', fn_stem) and ext in (".pdf", ".jpg", ".jpeg", ".png"):
+        return None, 0.0  # Trigger vision classification to determine if it's red pen or signed form
 
     # --- Image files with no filename hint → vision ---
     if ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
@@ -1385,6 +1403,28 @@ def check_file_structure(extract_dir: str, zip_name: str) -> dict:
     corrections = []
     files = []
 
+    # NEW: Recursive ZIP extraction (search inside ZIP files)
+    # Some consultants upload ZIPs inside ZIPs (e.g. Red Pen markup in a sub-zip)
+    zip_found = True
+    while zip_found:
+        zip_found = False
+        for root, dirs, filenames in os.walk(extract_dir):
+            for fn in filenames:
+                if fn.lower().endswith(".zip") and not fn.startswith("."):
+                    zip_path = os.path.join(root, fn)
+                    try:
+                        with zipfile.ZipFile(zip_path, "r") as zf:
+                            # Extract into a subfolder to avoid collisions before flattening
+                            sub_dir = os.path.join(root, f"extracted_{Path(fn).stem}")
+                            os.makedirs(sub_dir, exist_ok=True)
+                            zf.extractall(sub_dir)
+                            corrections.append(f"Extracted nested ZIP: '{fn}'")
+                            zip_found = True
+                        # Remove the original zip after extraction
+                        os.remove(zip_path)
+                    except Exception as e:
+                        warnings.append(f"Could not extract nested ZIP '{fn}': {str(e)}")
+
     for root, dirs, filenames in os.walk(extract_dir):
         rel_root = os.path.relpath(root, extract_dir)
         for fn in filenames:
@@ -1511,6 +1551,7 @@ def check_document_completeness(file_map: dict, unclassified: list) -> dict:
         "covenant_application", "pool_form", "discount_approval", "owner_supplied",
         "modified_plan", "fall_ack", "acoustic_report", "bal_report",
         "contour_survey", "sales_accept", "soil_report", "covenant_doc",
+        "decision_notice",
     ]
     for doc_key in conditional_keys:
         if doc_key in file_map:
@@ -1593,12 +1634,22 @@ def check_geosite(file_map: dict, land_registered: bool | None = None) -> dict:
     changes the validation requirements.
     """
     if "geosite" not in file_map:
-        return {
-            "issues": ["No GeoSite file found in submission — CRITICAL per 1.0 PSE Document Naming"],
-            "warnings": [], "analysis": {}, "lot_dimensions": None,
-        }
+        # Check for alternate names if geosite not in file_map
+        # This catches cases where it might have been classified as geosite_extra or similar
+        geosite_key = "geosite"
+        if geosite_key not in file_map and "geosite_extra" in file_map:
+            geosite_key = "geosite_extra"
+        
+        if geosite_key not in file_map:
+            return {
+                "issues": ["No GeoSite file found in submission — CRITICAL per 1.0 PSE Document Naming"],
+                "warnings": [], "analysis": {}, "lot_dimensions": None,
+            }
+        geosite_file = file_map[geosite_key]
+    else:
+        geosite_file = file_map["geosite"]
 
-    geosite_file = file_map["geosite"]
+    geosite_path = geosite_file["full_path"]
     geosite_path = geosite_file["full_path"]
     ext = Path(geosite_path).suffix.lower()
 
@@ -1645,7 +1696,7 @@ IMPORTANT CALIBRATION — only flag these as TRUE problems:
 - is_geosite_tool = false ONLY if the document is clearly NOT a GeoSite (e.g. it's a hand-drawn sketch, a site visit checklist, or a contour survey with no house positioned on it). If you can see the AUSMAR siting header OR the GeoSite IT Pty Ltd watermark OR a Geo Plan ID, set this to true.
 - house_sited_at_scale = false ONLY if there is literally no house floor plan visible on the lot. If a floor plan is positioned inside the lot boundary, set this to true.
 - setback_dimensions_shown = false ONLY if there are NO numeric dimension annotations at all. If you can see any measurements (even just 2-3 numbers with "m"), set this to true.
-- customer_signatures_present = false ONLY if the signature lines are clearly blank/empty. If there are any marks, initials, or signatures, set this to true.
+- customer_signatures_present = false ONLY if the signature lines are clearly blank/empty. If there are any marks, initials, or signatures (even if small or in a different color), set this to true. If the document is clearly a valid signed GeoSite with all other elements present, assume signatures are present unless you are 100% certain they are missing.
 - is_combined_with_contours = true ONLY if contour lines are overlaid on top of the GeoSite making the plan hard to read.
 
 Extract data and report in JSON format:
@@ -1734,7 +1785,8 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         if analysis.get("text_readable") is False:
             warnings.append("Text on GeoSite is overlapping or hard to read — may cause issues for drafting")
         if analysis.get("customer_signatures_present") is False:
-            warnings.append("Customer signature(s) may be missing from GeoSite — required per 1.0 naming")
+            # Demoted to a soft note — vision AI often misses small signatures
+            warnings.append("Customer signature(s) not clearly visible on GeoSite — please verify manually")
 
         # Detect regional rules for setback/coverage checks
         estate_for_check = analysis.get("estate_name") or ""
@@ -1841,6 +1893,19 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
 
     home_design = analysis.get("home_design", "") or ""
 
+    # Plan Aliases — handles discontinued names or common consultant shorthand
+    PLAN_ALIASES = {
+        "kirrawee 165": "Isle",
+        "kirrawee": "Isle",
+    }
+    
+    # Check for aliases first
+    canonical_name = home_design
+    for alias, canonical in PLAN_ALIASES.items():
+        if alias in home_design.lower():
+            canonical_name = canonical
+            break
+
     try:
         plans = db.get_all_plans()
     except Exception:
@@ -1848,28 +1913,28 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
     matched_plan = None
 
     for p in plans:
-        if p["name"].lower() in home_design.lower():
+        if p["name"].lower() in canonical_name.lower():
             matched_plan = p
             break
 
     if not matched_plan:
         for p in plans:
             words = p["name"].lower().split()
-            if all(w in home_design.lower() for w in words):
+            if all(w in canonical_name.lower() for w in words):
                 matched_plan = p
                 break
 
     if not matched_plan:
         for p in plans:
             family = p["name"].lower().split()[0]
-            if len(family) > 3 and family in home_design.lower():
+            if len(family) > 3 and family in canonical_name.lower():
                 matched_plan = p
                 break
 
     if not matched_plan:
         note = (
             f"Plan '{home_design}' is not in the current AUSMAR plan library "
-            f"(Designer, Boutique, Acreage collections). This is likely a discontinued "
+            f"(Designer, Boutique, Acreage, First Series collections). This is likely a discontinued "
             f"or legacy plan — manual plan-to-lot fit check required by Heath."
             if home_design
             else "Could not identify plan name from GeoSite — manual plan-to-lot fit check required by Heath"
