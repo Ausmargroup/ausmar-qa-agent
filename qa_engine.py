@@ -2387,10 +2387,27 @@ def build_corrected_zip(extract_dir: str, deal_code: str, output_dir: str) -> st
     zip_path = os.path.join(output_dir, zip_name)
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fn in sorted(os.listdir(extract_dir)):
-            fp = os.path.join(extract_dir, fn)
-            if os.path.isfile(fp) and not fn.startswith(".") and not fn.endswith(".md"):
-                zf.write(fp, fn)
+        # Walk ALL files in extract_dir (including subfolders) to ensure
+        # NOTHING is excluded from the corrected zip. Classified files get
+        # renamed, unclassified files keep their original names.
+        for root, dirs, filenames in os.walk(extract_dir):
+            for fn in sorted(filenames):
+                if fn.startswith(".") or fn.endswith(".md") or "__MACOSX" in root:
+                    continue
+                fp = os.path.join(root, fn)
+                if os.path.isfile(fp):
+                    # Use flat filename in zip (no subfolder structure)
+                    # If collision, append a suffix
+                    arc_name = fn
+                    existing = zf.namelist()
+                    if arc_name in existing:
+                        stem = Path(fn).stem
+                        ext = Path(fn).suffix
+                        counter = 2
+                        while arc_name in existing:
+                            arc_name = f"{stem} ({counter}){ext}"
+                            counter += 1
+                    zf.write(fp, arc_name)
 
     return zip_path
 
@@ -2410,6 +2427,98 @@ def _get_fp_notes(check_name: str) -> str:
     except Exception:
         pass
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Helper: suppress or downgrade issues/warnings based on false positive history
+# ---------------------------------------------------------------------------
+def _apply_fp_suppression(results: dict) -> dict:
+    """Post-process all check results to suppress or downgrade findings that have
+    been repeatedly marked as false positives by staff (threshold: 3+ times).
+    
+    Behaviour:
+    - If a specific issue_text has been marked FP 3+ times for a check_name,
+      it is removed from 'issues' and downgraded to a warning note.
+    - If marked FP 5+ times, it is suppressed entirely (removed from both).
+    - Partial matching: if 60%+ of the words in a stored FP issue appear in a
+      current issue, it counts as a match.
+    """
+    try:
+        fp_counts = db.get_fp_counts_by_check()
+    except Exception:
+        return results  # Can't query DB, skip suppression
+
+    if not fp_counts:
+        return results
+
+    def _is_similar(current_text: str, fp_text: str) -> bool:
+        """Check if current issue is similar to a known false positive."""
+        current_lower = current_text.lower()
+        fp_lower = fp_text.lower()
+        # Exact match
+        if fp_lower in current_lower or current_lower in fp_lower:
+            return True
+        # Word overlap match (60% threshold)
+        fp_words = set(fp_lower.split())
+        current_words = set(current_lower.split())
+        if not fp_words:
+            return False
+        overlap = len(fp_words & current_words) / len(fp_words)
+        return overlap >= 0.6
+
+    checks = results.get("checks", {})
+    suppressed_log = []
+
+    for check_name, check_data in checks.items():
+        if not isinstance(check_data, dict):
+            continue
+        check_fps = fp_counts.get(check_name, {})
+        if not check_fps:
+            continue
+
+        # Process issues
+        new_issues = []
+        for issue in check_data.get("issues", []):
+            suppressed = False
+            for fp_text, count in check_fps.items():
+                if _is_similar(issue, fp_text):
+                    if count >= 5:
+                        # Full suppression — remove entirely
+                        suppressed_log.append(f"Suppressed (5+ FP): [{check_name}] {issue}")
+                        suppressed = True
+                        break
+                    elif count >= 3:
+                        # Downgrade to warning
+                        suppressed_log.append(f"Downgraded (3+ FP): [{check_name}] {issue}")
+                        if "warnings" not in check_data:
+                            check_data["warnings"] = []
+                        check_data["warnings"].append(f"[Auto-downgraded, {count}x FP] {issue}")
+                        suppressed = True
+                        break
+            if not suppressed:
+                new_issues.append(issue)
+        check_data["issues"] = new_issues
+
+        # Process warnings
+        new_warnings = []
+        for warning in check_data.get("warnings", []):
+            if warning.startswith("[Auto-downgraded"):
+                new_warnings.append(warning)
+                continue
+            suppressed = False
+            for fp_text, count in check_fps.items():
+                if _is_similar(warning, fp_text) and count >= 5:
+                    suppressed_log.append(f"Suppressed warning (5+ FP): [{check_name}] {warning}")
+                    suppressed = True
+                    break
+            if not suppressed:
+                new_warnings.append(warning)
+        check_data["warnings"] = new_warnings
+
+    if suppressed_log:
+        results["fp_suppression_applied"] = suppressed_log
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -2488,14 +2597,10 @@ def cross_check_prelog(prelog: dict, review_results: dict) -> list[str]:
                 "verify correct ITP report used"
             )
 
-    if prelog.get("consultant_name"):
-        gs_analysis = review_results.get("checks", {}).get("geosite_verification", {}).get("analysis", {})
-        gs_consultant = gs_analysis.get("consultant_name", "")
-        if gs_consultant and prelog["consultant_name"].lower() not in gs_consultant.lower():
-            notes.append(
-                f"Pre-log consultant '{prelog['consultant_name']}' doesn't match "
-                f"GeoSite consultant '{gs_consultant}'"
-            )
+    # NOTE: Removed consultant name vs GeoSite company comparison.
+    # The GeoSite "consultant" field contains the surveying company name
+    # (e.g. "HPS AAP Consulting Pty Ltd"), NOT the AUSMAR sales consultant.
+    # Comparing these was generating 100% false positives.
 
     return notes
 
@@ -2903,6 +3008,10 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                 results["checks"]["prelog_crosscheck"] = {
                     "issues": [], "warnings": prelog_notes,
                 }
+
+        # === Apply false positive suppression (learning from staff feedback) ===
+        _progress(94, "Applying learning from staff feedback...")
+        results = _apply_fp_suppression(results)
 
         # === Generate verdict ===
         _progress(95, "Generating verdict and outputs...")

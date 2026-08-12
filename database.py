@@ -467,6 +467,21 @@ if _DATABASE_URL:
         conn.close()
         return [dict(r) for r in rows]
 
+    def get_fp_counts_by_check():
+        """Return dict of {check_name: {issue_text: count}} for all false positives."""
+        conn = get_db()
+        cur = _exec(conn, "SELECT check_name, issue_text, COUNT(*) as cnt FROM feedback WHERE is_correct=0 GROUP BY check_name, issue_text")
+        rows = cur.fetchall()
+        conn.close()
+        result = {}
+        for r in rows:
+            d = dict(r)
+            cn = d["check_name"]
+            if cn not in result:
+                result[cn] = {}
+            result[cn][d["issue_text"]] = d["cnt"]
+        return result
+
     # ── Pre-logs ───────────────────────────────────────────────────────────────
     def save_prelog(data: dict) -> int:
         conn = get_db()
@@ -919,6 +934,20 @@ else:
         rows = conn.execute("SELECT * FROM feedback WHERE is_correct=0 ORDER BY created_at DESC").fetchall()
         conn.close()
         return [dict(r) for r in rows]
+
+    def get_fp_counts_by_check():
+        """Return dict of {check_name: {issue_text: count}} for all false positives."""
+        conn = get_db()
+        rows = conn.execute("SELECT check_name, issue_text, COUNT(*) as cnt FROM feedback WHERE is_correct=0 GROUP BY check_name, issue_text").fetchall()
+        conn.close()
+        result = {}
+        for r in rows:
+            d = dict(r)
+            cn = d["check_name"]
+            if cn not in result:
+                result[cn] = {}
+            result[cn][d["issue_text"]] = d["cnt"]
+        return result
 
     def save_prelog(data):
         conn = get_db()
