@@ -124,7 +124,7 @@ def get_client() -> OpenAI:
 # Constants
 # ---------------------------------------------------------------------------
 JUNK_PATTERNS = {"__macosx", ".ds_store", "thumbs.db", ".tmp", "~$"}
-LICENCE_BAD_EXTS = {".heic", ".msg", ".webp"}
+LICENCE_BAD_EXTS = {".msg"}  # .heic removed — valid iPhone photo format
 MAX_IMAGE_DIM = 1024
 
 # NOTE: Gas cooktops are permitted in all estates including those with gas-ban covenants.
@@ -505,12 +505,13 @@ def ocr_geosite_info_box(pdf_path: str) -> dict:
             ocr_text
         )
         if val:
-            result["site_coverage_percent"] = float(val)
-        else:
-            # Fallback: any standalone percentage that's plausible (30-100%)
-            m = re.search(r'\b([3-9][0-9](?:\.[0-9]+)?)\s*%', ocr_text)
-            if m:
-                result["site_coverage_percent"] = float(m.group(1))
+            cov_val = float(val)
+            # Sanity check: only accept if in realistic range (1-80%)
+            if 1 <= cov_val <= 80:
+                result["site_coverage_percent"] = cov_val
+            # If > 80%, don't set it — let it be null rather than report wrong data
+        # NOTE: Removed fallback regex that grabbed any standalone percentage.
+        # This was the source of false positives (grabbing random % values from the page).
 
         # --- Site Area ---
         val = _extract_labelled_value(
@@ -780,6 +781,15 @@ def pdf_all_pages_to_base64(pdf_path: str, dpi: int = 100, max_pages: int = 3) -
 
 def image_to_base64(img_path: str) -> str:
     try:
+        # HEIC support: try pillow-heif if standard Pillow can't open
+        ext = Path(img_path).suffix.lower()
+        if ext in (".heic", ".heif"):
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                print(f"[WARN] pillow-heif not installed, cannot open {img_path}")
+                return ""
         with Image.open(img_path) as img:
             return _img_to_b64(img)
     except Exception as e:
@@ -1174,7 +1184,7 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         # Deposit Receipt
         (["deposit remit", "deposit receipt", "remittance", "receipt"], "deposit_receipt"),
         # Drivers Licence
-        (["drivers licence", "driver licence", "drivers license", "driver license", "dl ", " dl "], "drivers_licence"),
+        (["drivers licence", "driver licence", "drivers license", "driver license", "driver's licence", "driver's license", "dl ", " dl "], "drivers_licence"),
         # POD / Building Envelope
         (["pod", "building envelope", "envelope plan"], "pod_envelope"),
         # Covenant Application
@@ -1238,7 +1248,7 @@ def classify_by_vision(file_info: dict) -> tuple[str | None, float]:
             if not pages_b64:
                 return None, 0.0
             image_b64_list = pages_b64
-        elif ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
+        elif ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".heic", ".webp"):
             b64 = image_to_base64(full_path)
             if not b64:
                 return None, 0.0
@@ -1731,6 +1741,11 @@ Extract data and report in JSON format:
   "notes": "additional observations"
 }}
 
+IMPORTANT VALIDATION RULES FOR NUMERIC VALUES:
+- site_coverage_percent: Typical residential values are 30-60%. If your calculated value exceeds 80%, re-examine the source data — you may have misread a dimension. Return null if uncertain.
+- fall_across_site_mm: This is the HEIGHT DIFFERENCE across the building pad in millimetres. It is NOT a boundary length, setback distance, or lot dimension. Typical values range from 0mm (flat) to 2000mm (steep). Values above 3000mm are extremely rare. If you read a value above 3000, you have likely misread a boundary length or lot dimension. Return null if uncertain.
+- If you cannot reliably extract a numeric value, return null rather than guessing.
+
 Be conservative: only flag something as false/problematic if you are CERTAIN it is wrong. When in doubt, assume the document is valid.{fp_notes}"""
 
         raw = call_vision_model(
@@ -1817,17 +1832,25 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
 
         coverage = analysis.get("site_coverage_percent")
         if coverage is not None and isinstance(coverage, (int, float)):
-            max_cov = (reg_rules or {}).get("max_site_coverage_pct", 60)
-            if coverage > max_cov:
-                issues.append(
-                    f"Site coverage {coverage}% exceeds {max_cov}% maximum "
-                    f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'})"
-                )
-            elif coverage > max_cov - 2:
+            # SANITY BOUND: residential site coverage is typically 30-60%.
+            # Values above 80% are almost certainly AI misreads.
+            if coverage > 80:
                 warnings.append(
-                    f"Site coverage {coverage}% is very close to {max_cov}% maximum — zero margin. "
-                    f"Verify with covenant."
+                    f"Site coverage value ({coverage}%) appears unrealistic (>80%) — "
+                    f"UNVERIFIED, likely AI misread. Manual check required."
                 )
+            else:
+                max_cov = (reg_rules or {}).get("max_site_coverage_pct", 60)
+                if coverage > max_cov:
+                    issues.append(
+                        f"Site coverage {coverage}% exceeds {max_cov}% maximum "
+                        f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'})"
+                    )
+                elif coverage > max_cov - 2:
+                    warnings.append(
+                        f"Site coverage {coverage}% is very close to {max_cov}% maximum — zero margin. "
+                        f"Verify with covenant."
+                    )
 
         if analysis.get("is_battle_axe_lot") is True:
             warnings.append(
@@ -1837,16 +1860,25 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
 
         fall_mm = analysis.get("fall_across_site_mm")
         if fall_mm is not None and isinstance(fall_mm, (int, float)):
-            if fall_mm >= 500:
+            # SANITY BOUND: typical residential site fall is 0-3000mm.
+            # Values above 3000mm are almost certainly AI misreads of boundary
+            # lengths, setback distances, or lot dimensions.
+            if fall_mm > 3000:
                 warnings.append(
-                    f"Site fall detected: {fall_mm}mm — Sites with Fall Acknowledgment (Signed) required. "
-                    f"Max cut/fill before building manager approval is 1000mm."
+                    f"Site fall value ({fall_mm}mm) appears unrealistic (>3000mm) — "
+                    f"UNVERIFIED, possibly misread boundary length or setback. Manual check required."
                 )
-            if fall_mm >= 1000:
-                issues.append(
-                    f"Significant site fall: {fall_mm}mm — may require contour survey, "
-                    f"retaining wall engineering, and council application"
-                )
+            else:
+                if fall_mm >= 500:
+                    warnings.append(
+                        f"Site fall detected: {fall_mm}mm — Sites with Fall Acknowledgment (Signed) required. "
+                        f"Max cut/fill before building manager approval is 1000mm."
+                    )
+                if fall_mm >= 1000:
+                    issues.append(
+                        f"Significant site fall: {fall_mm}mm — may require contour survey, "
+                        f"retaining wall engineering, and council application"
+                    )
 
         # Home Design field: only warn if we couldn't extract it AND the plan name wasn't
         # found elsewhere — this was a FP when the LLM couldn't read small text
@@ -2923,10 +2955,14 @@ def run_qa_review(zip_path: str, zip_name: str, corrected_zip_dir: str,
                 )
 
         # === Check 8: Red Pen to PSE Cross-Reference ===
+        # STAGE GATE: This check only applies to NHP/Contract stages (Stage 2/3).
+        # At PSE stage (Stage 1), the red pen just needs to EXIST — specific NHP
+        # reference numbers don't exist yet at PSE stage.
         _progress(85, "Cross-referencing Red Pen annotations with PSE...")
+        _is_pse_stage = True  # This is the Stage 1 PSE QA pipeline
         redpen_analysis = results["checks"].get("red_pen_markup", {}).get("analysis", {})
         ref_numbers = redpen_analysis.get("reference_numbers_found", [])
-        if ref_numbers and "pse_doc" in file_map:
+        if ref_numbers and "pse_doc" in file_map and not _is_pse_stage:
             try:
                 pse_path = file_map["pse_doc"]["full_path"]
                 # Check PSE pages 4-10 for reference number write-ups (sections are in the middle)
