@@ -158,6 +158,9 @@ DOC_TYPES = {
     "soil_report": "Soil Report",
     "covenant_doc": "Covenant",
     "decision_notice": "Decision Notice",
+    "supplementary": "Supplementary Document",
+    "engineering_drawing": "Engineering Drawing",
+    "certificate": "Certificate",
 }
 
 # Core required documents (missing = issue)
@@ -1171,20 +1174,21 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         (["intention to purchase", "itp form", "itp ", " itp"], "itp"),
         # PSE Doc — also match bare 'pse' filename (scanned PSE PDFs often named PSE.pdf)
         (["provisional sales estimate", "pse doc", "pse ", " pse", "pse signed", "pse.pdf"], "pse_doc"),
-        # GeoSite
+        # GeoSite — "geosite" anywhere in filename
         (["geosite", "geo site", "geo plan", "geosite plan"], "geosite"),
         # Red Pen
         (["red pen", "redpen", "mark up", "markup", "red mark"], "red_pen"),
         # Pool Form
-        (["swimming pool", "pool form"], "pool_form"),
+        (["swimming pool", "pool form", "pool acknowledgement"], "pool_form"),
         # Promo Ack
-        (["promo", "client acknowledgement", "client acknowledgment"], "promo_ack"),
+        (["promo", "client acknowledgement", "client acknowledgment", "ausmar advantage"], "promo_ack"),
         # Disclosure Plan
         (["disclosure plan", "survey plan", "plan of sub"], "disclosure_plan"),
         # Deposit Receipt
         (["deposit remit", "deposit receipt", "remittance", "receipt"], "deposit_receipt"),
-        # Drivers Licence
-        (["drivers licence", "driver licence", "drivers license", "driver license", "driver's licence", "driver's license", "dl ", " dl "], "drivers_licence"),
+        # Drivers Licence — catches all spelling variants
+        (["drivers licence", "driver licence", "drivers license", "driver license",
+          "driver's licence", "driver's license", "driver licen", "dl ", " dl "], "drivers_licence"),
         # POD / Building Envelope
         (["pod", "building envelope", "envelope plan"], "pod_envelope"),
         # Covenant Application
@@ -1199,8 +1203,8 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         (["acoustic", "noise report"], "acoustic_report"),
         # BAL Report
         (["bal report", "bushfire"], "bal_report"),
-        # Contour Survey
-        (["contour survey", "contour plan", "topographic"], "contour_survey"),
+        # Contour Survey / Site Checklist
+        (["contour survey", "contour plan", "topographic", "site visit", "site checklist"], "contour_survey"),
         # Covenant Guidelines
         (["design guidelines", "covenant guidelines", "covenant doc"], "covenant_guidelines"),
         # PSE Checklist
@@ -1213,6 +1217,11 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
         (["owner supplied", "owner supply"], "owner_supplied"),
         # Modified Plan
         (["modified plan", "plan modification"], "modified_plan"),
+        # Supplementary documents (valid, don't flag as unclassified)
+        (["retaining wall", "fencing guide", "retaining & fencing",
+          "engineering report", "structural report"], "supplementary"),
+        # Certificates (council/compliance)
+        (["certificate", "compliance cert"], "certificate"),
     ]
     for patterns, doc_type in FILENAME_HINTS:
         if any(p in fn_lower for p in patterns):
@@ -1229,6 +1238,14 @@ def classify_by_content(file_info: dict, text_content: str, spreadsheet_info: di
     # are likely scanned/signed documents (signed forms or red pen markups).
     if re.match(r'^doc\d{14}', fn_stem) and ext in (".pdf", ".jpg", ".jpeg", ".png"):
         return None, 0.0  # Trigger vision classification to determine if it's red pen or signed form
+
+    # --- Engineering drawings (.dwg, .dxf) — valid, don't flag as unclassified ---
+    if ext in (".dwg", ".dxf"):
+        return "engineering_drawing", 0.8
+
+    # --- Certificate pattern (e.g. "Cer25 07095 2.pdf") ---
+    if re.match(r'^cer\d', fn_stem, re.IGNORECASE):
+        return "certificate", 0.7
 
     # --- Image files with no filename hint → vision ---
     if ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"):
@@ -1561,7 +1578,7 @@ def check_document_completeness(file_map: dict, unclassified: list) -> dict:
         "covenant_application", "pool_form", "discount_approval", "owner_supplied",
         "modified_plan", "fall_ack", "acoustic_report", "bal_report",
         "contour_survey", "sales_accept", "soil_report", "covenant_doc",
-        "decision_notice",
+        "decision_notice", "supplementary", "engineering_drawing", "certificate",
     ]
     for doc_key in conditional_keys:
         if doc_key in file_map:
@@ -1579,10 +1596,10 @@ def check_document_completeness(file_map: dict, unclassified: list) -> dict:
         if dl_ext in LICENCE_BAD_EXTS:
             issues.append(f"Drivers Licence in {dl_ext} format — needs .jpg, .png, or .pdf")
 
-    # Note unclassified files
+    # Note unclassified files — neutral tone, not a warning
     if unclassified:
         unc_names = [f["name"] for f in unclassified]
-        warnings.append(f"Unclassified files (could not determine document type): {', '.join(unc_names)}")
+        warnings.append(f"Additional files included: {', '.join(unc_names)}")
 
     return {
         "found": found,
@@ -1819,58 +1836,36 @@ Be conservative: only flag something as false/problematic if you are CERTAIN it 
         issues = []
         warnings = []
 
-        # GeoSite is REQUIRED on EVERY job — no conditional acceptance based on land registration.
-        # Updated per AUSMAR policy: full GeoSite siting plan is mandatory regardless of registration status.
+        # ===================================================================
+        # PSE STAGE: SIMPLIFIED GEOSITE CHECK
+        # At PSE stage, only verify:
+        # 1. GeoSite document EXISTS (already confirmed above)
+        # 2. It appears to be a signed GeoSite (generous — any mark = yes)
+        # DO NOT flag: signature clarity, missing setbacks, house not sited,
+        # plan name extraction failures, or dimension accuracy.
+        # These are informational notes only, never findings/flags.
+        # ===================================================================
 
+        # Informational notes (soft, never blocking)
         if analysis.get("is_geosite_tool") is False:
             warnings.append(
                 "Document may not be from geosite.com.au — verify it shows AUSMAR siting header "
-                "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this warning."
+                "or GeoSite IT Pty Ltd watermark. If it is a valid GeoSite, ignore this note."
             )
         if analysis.get("is_combined_with_contours") is True:
             warnings.append(
-                "GeoSite appears combined with contour data — Heath requires these to be separate documents. "
-                "Contours overlaid on GeoSite make it unreadable (real issue from S26TLS review)."
+                "GeoSite appears combined with contour data — Heath prefers these as separate documents."
             )
-        if analysis.get("house_sited_at_scale") is False:
-            issues.append("House not sited at scale on the lot — cannot verify fit. GeoSite is required on every job.")
-        if analysis.get("setback_dimensions_shown") is False:
-            issues.append(
-                "Setback dimensions not shown on GeoSite — MUST have all setbacks "
-                "(front, rear, left side, right side) for drafting team. GeoSite is required on every job."
-            )
-        if analysis.get("text_readable") is False:
-            warnings.append("Text on GeoSite is overlapping or hard to read — may cause issues for drafting")
-        if analysis.get("customer_signatures_present") is False:
-            # Demoted to a soft note — vision AI often misses small signatures
-            warnings.append("Customer signature(s) not clearly visible on GeoSite — please verify manually")
 
-        # Detect regional rules for setback/coverage checks
+        # NOTE: All other GeoSite checks (house_sited_at_scale, setback_dimensions_shown,
+        # customer_signatures_present, text_readable) are DISABLED at PSE stage.
+        # The AI cannot reliably read hand-annotated site plans and was generating
+        # systemic false positives. These checks are reserved for NHP/Contract stage.
+
+        # Detect regional rules for informational extraction only
         estate_for_check = analysis.get("estate_name") or ""
         addr_for_check = analysis.get("street_address") or ""
         reg_rules = detect_regional_rules(estate_for_check, addr_for_check)
-        
-        front_sb = analysis.get("front_setback_m")
-        if front_sb is not None and isinstance(front_sb, (int, float)):
-            min_front = (reg_rules or {}).get("front_setback_m", 3.0)
-            if front_sb < min_front:
-                warnings.append(
-                    f"Front setback is {front_sb}m — minimum is {min_front}m "
-                    f"({'per ' + reg_rules['name'] if reg_rules else 'verify with council'}). "
-                    f"Verify against council requirements."
-                )
-
-        for side_key, side_label in [("side_setback_left_m", "Left"), ("side_setback_right_m", "Right")]:
-            val = analysis.get(side_key)
-            if val is not None and isinstance(val, (int, float)):
-                min_side = (reg_rules or {}).get("side_setback_m", 0.75)
-                if val < min_side:
-                    # Demoted to WARNING — build-to-boundary lots are valid per covenant
-                    warnings.append(
-                        f"{side_label} side setback is {val}m — minimum is {min_side}m "
-                        f"({'per ' + reg_rules['name'] if reg_rules else 'check council requirements'}). "
-                        f"Verify against covenant — may be a build-to-boundary lot."
-                    )
 
         coverage = analysis.get("site_coverage_percent")
         if coverage is not None and isinstance(coverage, (int, float)):
@@ -1972,7 +1967,25 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
         "kirrawee 165": "Isle",
         "kirrawee": "Isle",
     }
-    
+
+    # Council/surveyor generic descriptions — these are NOT AUSMAR plan names.
+    # If the extracted name matches one of these patterns, ignore it and try other sources.
+    GENERIC_BUILDING_DESCRIPTIONS = [
+        "single storey", "double storey", "two storey", "brick dwelling",
+        "residential dwelling", "proposed dwelling", "new dwelling",
+        "brick veneer", "rendered dwelling", "detached dwelling",
+        "residence", "proposed residence", "new residence",
+    ]
+    _hd_lower = home_design.lower()
+    if any(desc in _hd_lower for desc in GENERIC_BUILDING_DESCRIPTIONS) and not any(
+        p in _hd_lower for p in ["atlantic", "beach", "breeze", "cali", "cape", "coral",
+        "cove", "driftwood", "horizon", "isle", "lake", "loch", "maui", "oceanic",
+        "pearl", "pebble", "reef", "shore", "surf", "tide", "wave", "wildwood",
+        "hudson", "kirrawee", "hillcrest", "synergy"]
+    ):
+        # This is a council description, not an AUSMAR plan name. Clear it.
+        home_design = ""
+
     # Check for aliases first
     canonical_name = home_design
     for alias, canonical in PLAN_ALIASES.items():
@@ -2006,12 +2019,14 @@ def check_plan_to_lot_fit(geosite_result: dict, file_map: dict) -> dict:
                 break
 
     if not matched_plan:
+        # INFORMATIONAL NOTE ONLY — not a finding/flag.
+        # The tool cannot reliably extract plan names from GeoSites (surveyor
+        # descriptions, small text, etc.). This is just a heads-up.
         note = (
-            f"Plan '{home_design}' is not in the current AUSMAR plan library "
-            f"(Designer, Boutique, Acreage, First Series collections). This is likely a discontinued "
-            f"or legacy plan — manual plan-to-lot fit check required by Heath."
+            f"Plan name could not be automatically identified (extracted: '{home_design}') — "
+            f"please confirm manually with drafting team."
             if home_design
-            else "Could not identify plan name from GeoSite — manual plan-to-lot fit check required by Heath"
+            else "Plan name could not be automatically identified — please confirm manually."
         )
         warnings.append(note)
         return {
@@ -2085,201 +2100,51 @@ def check_red_pen(file_map: dict, deposit_type: str) -> dict:
                 "analysis": {},
             }
 
+    # ===================================================================
+    # PSE STAGE: SIMPLIFIED RED PEN CHECK
+    # At PSE stage, only verify the red pen EXISTS and is multi-page.
+    # Do NOT analyse contents, plan types, signatures, colours, or
+    # reference numbers — that level of analysis is for NHP/Contract.
+    # ===================================================================
     redpen_file = file_map["red_pen"]
     redpen_path = redpen_file["full_path"]
     ext = Path(redpen_path).suffix.lower()
 
+    analysis = {"red_pen_present": True}
+    issues = []
+    warnings = []
+
     try:
-        vision_warning = None
+        page_count = 0
         if ext == ".pdf":
-            pages_b64 = pdf_all_pages_to_base64(redpen_path, dpi=100, max_pages=5)
-            if not pages_b64:
-                vision_warning = "PDF vision analysis skipped — poppler unavailable or PDF conversion failed"
-        elif ext in (".jpg", ".jpeg", ".png"):
-            b64 = image_to_base64(redpen_path)
-            pages_b64 = [b64] if b64 else []
-            if not pages_b64:
-                vision_warning = "Image conversion failed for Red Pen"
-        else:
-            return {
-                "issues": [f"Red Pen in unsupported format: {ext}"],
-                "warnings": [], "analysis": {},
-            }
-
-        # Merge pages from red_pen_extra (second red pen file) into the analysis
-        if "red_pen_extra" in file_map:
-            extra_path = file_map["red_pen_extra"]["full_path"]
-            extra_ext = Path(extra_path).suffix.lower()
             try:
-                if extra_ext == ".pdf":
-                    extra_pages = pdf_all_pages_to_base64(extra_path, dpi=100, max_pages=5)
-                    if extra_pages:
-                        pages_b64 = (pages_b64 or []) + extra_pages
-                        print(f"[INFO] Merged {len(extra_pages)} pages from red_pen_extra into Red Pen analysis")
-                elif extra_ext in (".jpg", ".jpeg", ".png"):
-                    b64 = image_to_base64(extra_path)
-                    if b64:
-                        pages_b64 = (pages_b64 or []) + [b64]
-            except Exception as e:
-                print(f"[WARN] Failed to merge red_pen_extra pages: {e}")
+                from pypdf import PdfReader
+                reader = PdfReader(redpen_path)
+                page_count = len(reader.pages)
+            except Exception:
+                page_count = 1  # Can't count, assume at least 1
+        else:
+            page_count = 1  # Image file = 1 page
 
-        if not pages_b64:
-            return {
-                "issues": [],
-                "warnings": [vision_warning or "Could not convert Red Pen to images — vision analysis skipped"],
-                "analysis": {},
-            }
+        analysis["page_count"] = page_count
 
-        fp_notes = _get_fp_notes("red_pen_markup")
+        if page_count == 1:
+            warnings.append(
+                "Red pen markup appears to be a single page — typically multi-page. "
+                "Confirm all plan types are included."
+            )
 
-        # ---- Filename-based plan type pre-detection (runs BEFORE vision call) ----
-        # Extract confirmed plan types from filenames so we can:
-        # (a) tell the LLM what's in the document, and
-        # (b) force-override any LLM misses after parsing.
-        FILENAME_PLAN_TOKENS = [
-            ("floor_plan",      ["floor plan", " floor,", " floor ", "floor.pdf", "flr plan"]),
-            ("elevations",      ["elev", "elevation"]),
-            ("electrical",      ["elec", "electrical", "elect"]),
-            ("floor_coverings", ["f cov", "fcov", "floor cov", "floor covering", "flr cov"]),
-            ("concrete",        ["concrete", "slab"]),
-            ("site_plan",       ["site plan", " site,", " site "]),
-            ("kitchen",         ["kit,", " kit ", "kitchen"]),
-            ("bathroom",        ["ensuite", "bath", "bathroom"]),
-        ]
-        rp_combined_name = " ".join([
-            redpen_file.get("name", "").lower(),
-            file_map.get("red_pen_extra", {}).get("name", "").lower(),
-        ])
-        filename_confirmed_types = set()
-        for plan_key, tokens in FILENAME_PLAN_TOKENS:
-            for tok in tokens:
-                if tok in rp_combined_name:
-                    filename_confirmed_types.add(plan_key)
-                    break
-        if filename_confirmed_types:
-            print(f"[INFO] Red pen filename pre-confirms plan types: {filename_confirmed_types}")
-
-        deposit_desc = (
-            "NHP ($2,500) — red pen markups ARE required, must be RED on AUSMAR base plan with dimensions"
-            if deposit_type == "NHP"
-            else "STC ($4,000) — clean plans expected, no structural changes"
+        # Width reductions — INFORMATIONAL ONLY (observation, not a finding)
+        # This was previously flagged as a warning; now just a soft note in analysis.
+        analysis["width_reductions_note"] = (
+            "Note: If plan uses width reductions, confirm siting compliance with drafting team."
         )
-
-        system_prompt = f"""You are an AUSMAR QA reviewer analysing Red Pen Markup documents.
-This is a {deposit_desc} submission.
-
-WHAT A VALID AUSMAR RED PEN MARKUP LOOKS LIKE:
-- It is a multi-page PDF with AUSMAR standard floor plans as the base
-- Changes are marked with COLORED highlights (green, yellow, blue, pink, or red circles/highlights)
-- The term "red pen" is a legacy name — modern AUSMAR markups use COLORED HIGHLIGHTS, not literal red ink
-- Numbered reference circles (e.g., 3.0, 3.2.a) mark each change area
-- Customer initials and date appear on each page (e.g., "TB LB 15/02/2026")
-- Multiple pages covering: floor plan, elevations, electrical/floor coverings, concrete/slab
-- The base plan shows AUSMAR branding, window schedules, floor area tables
-- Changes may include raked ceilings, room modifications, fixture selections
-
-CALIBRATION — BE CONSERVATIVE:
-- is_red_colour: Set TRUE if markups use ANY coloured highlights (green, yellow, blue, pink, red). Only set FALSE if there are literally NO coloured markings at all.
-- is_on_ausmar_base_plan: Set TRUE if the base plan has AUSMAR branding, standard room layouts, window schedules, or floor area tables. Only set FALSE if the plan is clearly from a different builder or hand-drawn.
-- has_dimensions_on_changes: Set TRUE if you can see ANY dimension annotations on changed areas. Only set FALSE if changes are shown but have zero dimensions.
-- customer_signed: Set TRUE if you can see ANY initials, signatures, or date markings. Only set FALSE if signature areas are clearly blank.
-- For plan_types_covered: A page showing a floor plan with electrical symbols AND floor covering notes counts as covering BOTH electrical and floor_coverings.
-
-Analyse and report in JSON:
-{{
-  "markup_colour": "describe the actual colours used (e.g., green/yellow/blue highlights)",
-  "is_red_colour": true/false,
-  "is_on_ausmar_base_plan": true/false,
-  "has_dimensions_on_changes": true/false,
-  "customer_signed": true/false,
-  "plan_types_covered": ["list: floor_plan, elevations, electrical, floor_coverings, concrete"],
-  "missing_plan_types": ["list of required types not found — empty list if all covered"],
-  "structural_changes_shown": true/false,
-  "changes_description": "brief description of what changes are shown",
-  "reference_numbers_found": ["list of reference numbers like 3.0, 3.2.a found on the markup"],
-  "tags_reference_pse_sections": true/false/null,
-  "hebel_changeover_noted": true/false,
-  "width_reductions_across_plan": true/false,
-  "facade_changes_shown": true/false,
-  "window_deletions_noted": true/false/null,
-  "concerns": ["only include genuinely problematic items"],
-  "notes": ""
-}}
-
-IMPORTANT: Be CONSERVATIVE. Only flag issues you are CERTAIN about. When in doubt, assume the markup is valid. Colored highlights (green, yellow, blue, pink) ARE valid markup colours for AUSMAR red pen documents.{fp_notes}
-{f'FILENAME CONFIRMS these plan types are present in this document: {sorted(filename_confirmed_types)}. Include ALL of these in plan_types_covered and do NOT list them in missing_plan_types.' if filename_confirmed_types else ''}"""
-
-        raw = call_vision_model(system_prompt, "Analyse these Red Pen Markup pages.", pages_b64)
-        analysis = parse_json_from_llm(raw)
-
-        issues = []
-        warnings = []
-
-        if deposit_type == "NHP":
-            # CRITICAL checks — all three block acceptance:
-            # 1. Must be on AUSMAR base plan
-            # 2. Must be in colour
-            # 3. Must include full set of plan types (to prove changes or no changes)
-            # 4. Must be signed/initialled by customer
-            if analysis.get("is_on_ausmar_base_plan") is False:
-                issues.append(
-                    "Markups NOT on standard AUSMAR base plan — "
-                    "must overlay AUSMAR plan, not consultant's own program "
-                    "(real rejection reason from S26TLS)"
-                )
-            if analysis.get("is_red_colour") is False:
-                colour = analysis.get("markup_colour", "unknown")
-                issues.append(
-                    f"Red Pen markups are not in colour (appears {colour}) — "
-                    f"all changes must be highlighted in colour so drafting can identify them"
-                )
-            if analysis.get("customer_signed") is False:
-                issues.append(
-                    "Red Pen is not signed/initialled by the customer — "
-                    "customer sign-off is required on all Red Pen pages"
-                )
-            # NOTE: Plan-type sub-check (floor plan / elevations / electrical / concrete) has been
-            # permanently removed. The LLM cannot reliably detect individual plan types within a
-            # multi-page Red Pen PDF and produced consistent false positives every run.
-            # Rule: if a Red Pen file exists and is classified → PASS. No sub-checks.
-            if analysis.get("has_dimensions_on_changes") is False:
-                warnings.append(
-                    "Some changed areas on Red Pen may not have dimensions — "
-                    "verify all structural changes are dimensioned"
-                )
-
-        elif deposit_type == "STC":
-            if analysis.get("structural_changes_shown") is True:
-                issues.append("Structural changes on STC submission — STC should have clean plans")
-
-        if analysis.get("hebel_changeover_noted"):
-            warnings.append(
-                "Hebel changeover noted — may be a setback compliance workaround. "
-                "Heath should verify this is legitimate."
-            )
-        if analysis.get("width_reductions_across_plan"):
-            warnings.append(
-                "Width reductions across entire plan — possible force-fit to lot. "
-                "Verify plan-to-lot fit carefully."
-            )
-        # Only warn about tag/PSE section mismatch if the model actually found reference numbers
-        # on the markup — if no ref numbers found, this check is meaningless
-        ref_nums = analysis.get("reference_numbers_found", [])
-        if analysis.get("tags_reference_pse_sections") is False and ref_nums:
-            warnings.append(
-                "Red pen reference numbers found but may not match PSE section write-ups "
-                "(e.g. tags like 3.2.a should have corresponding PSE sections) — verify with Heath"
-            )
-
-        return {"issues": issues, "warnings": warnings, "analysis": analysis}
 
     except Exception as e:
         traceback.print_exc()
-        return {
-            "issues": [],
-            "warnings": [f"Red Pen vision analysis skipped due to error: {str(e)}"],
-            "analysis": {},
-        }
+        warnings.append(f"Red Pen page count check failed: {str(e)}")
+
+    return {"issues": issues, "warnings": warnings, "analysis": analysis}
 
 
 # ---------------------------------------------------------------------------
