@@ -1593,43 +1593,85 @@ def check_document_completeness(file_map: dict, unclassified: list) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Rename files to standard names based on classification
+# Rename files to short, familiar corrected-ZIP names based on classification
 # ---------------------------------------------------------------------------
+# Keep this map deliberately short. These are the names Heath and Drafting
+# expect in corrected submission ZIPs; do not substitute verbose DOC_TYPES labels.
+CORRECTED_ZIP_SHORT_NAMES = {
+    "geosite": "Geosite",
+    "itp": "ITP",
+    "pool_form": "Pool Acknowledgement",
+    "pse_checklist": "PSE checklist",
+    "sales_accept": "PSE checklist",
+    "pse_doc": "PSE signed",
+    "pse_excel": "PSE",
+    "deposit_receipt": "Receipt",
+    "red_pen": "Red pen mark up",
+    "promo_ack": "Signed promotion",
+    "contour_survey": "Site checklist",
+    "fall_ack": "Site checklist",
+    "disclosure_plan": "SP plan",
+}
+
+
+def _corrected_zip_filename(doc_key: str, original_name: str) -> str | None:
+    """Return the short corrected-ZIP filename, preserving original extension.
+
+    Returns None for document types without a requested naming convention so
+    the original file name remains unchanged. Drivers licences retain the client
+    name from their original filename, with only the licence label standardised.
+    """
+    ext = Path(original_name).suffix
+    original_stem = Path(original_name).stem
+
+    if doc_key == "drivers_licence":
+        # Preserve the client name but remove a leading deal code if present.
+        # E.g. "S26DKW Kath Wallace Driver's Licence.pdf" ->
+        #      "Kath Wallace Driver's Licence.pdf".
+        client_name = re.split(r"driver'?s?\s+licen[cs]e", original_stem, maxsplit=1, flags=re.IGNORECASE)[0]
+        client_name = re.sub(r"^[A-Za-z]\d{2}[A-Za-z]{2,6}\d*[\s_-]*", "", client_name)
+        client_name = re.sub(r"[\s_-]+$", "", client_name).strip()
+        return f"{client_name + ' ' if client_name else ''}Driver's Licence{ext}"
+
+    short_stem = CORRECTED_ZIP_SHORT_NAMES.get(doc_key)
+    return f"{short_stem}{ext}" if short_stem else None
+
+
 def rename_classified_files(extract_dir: str, file_map: dict, classifications: dict) -> list[str]:
-    """Rename files to their canonical names. Returns list of correction descriptions."""
+    """Rename only mapped document types to short corrected-ZIP names.
+
+    Unclassified files and classified types without a short-name mapping retain
+    their original filenames. No file is deleted by this function.
+    """
     corrections = []
 
     for doc_key, file_info in file_map.items():
-        canonical_name = DOC_TYPES.get(doc_key)
-        if not canonical_name:
+        old_name = file_info["name"]
+        new_name = _corrected_zip_filename(doc_key, old_name)
+        if not new_name or new_name == old_name:
             continue
 
-        old_name = file_info["name"]
-        ext = Path(old_name).suffix
-        new_name = canonical_name + ext
+        old_path = file_info["full_path"]
+        new_path = os.path.join(extract_dir, new_name)
 
-        if new_name != old_name:
-            old_path = file_info["full_path"]
-            new_path = os.path.join(extract_dir, new_name)
+        # Avoid overwriting: append (2), (3), etc. for same document type.
+        if os.path.exists(new_path) and new_path != old_path:
+            stem = Path(new_name).stem
+            ext = Path(new_name).suffix
+            counter = 2
+            while os.path.exists(new_path):
+                new_name = f"{stem} ({counter}){ext}"
+                new_path = os.path.join(extract_dir, new_name)
+                counter += 1
 
-            # Avoid overwriting
-            if os.path.exists(new_path) and new_path != old_path:
-                # Add a suffix to avoid collision
-                stem = canonical_name
-                counter = 2
-                while os.path.exists(new_path):
-                    new_name = f"{stem} ({counter}){ext}"
-                    new_path = os.path.join(extract_dir, new_name)
-                    counter += 1
-
-            try:
-                os.rename(old_path, new_path)
-                corrections.append(f"Renamed '{old_name}' -> '{new_name}' (identified as {canonical_name} by content)")
-                file_info["name"] = new_name
-                file_info["full_path"] = new_path
-                file_info["rel_path"] = new_name
-            except Exception as e:
-                print(f"[WARN] rename failed for {old_name}: {e}")
+        try:
+            os.rename(old_path, new_path)
+            corrections.append(f"Renamed '{old_name}' -> '{new_name}'")
+            file_info["name"] = new_name
+            file_info["full_path"] = new_path
+            file_info["rel_path"] = new_name
+        except Exception as e:
+            print(f"[WARN] rename failed for {old_name}: {e}")
 
     return corrections
 
